@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MapLite</title>
+
+<link rel="stylesheet" href="css/leaflet.css" />
+<link rel="stylesheet" href="data/leaflet.draw.css" />
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<div id="app">
+
+
+  <!-- Ribbon -->
+  <div id="ribbon">
+    <div id="ribbon-tabs">
+      <div class="ribbon-brand">
+        <img src="data/logo.png" alt="">
+      </div> &nbsp;
+      <div class="ribbon-tab active" data-tab="map">Map</div>
+      <div class="ribbon-tab" data-tab="edit">Edit</div>
+      <div class="ribbon-tab" data-tab="analysis">Analysis</div>
+      <div class="ribbon-tab" data-tab="view">View</div>
+    </div>
+
+    <!-- MAP TAB -->
+    <div id="tab-map" class="ribbon-body show">
+      <div class="rgroup">
+        <div class="rgroup-buttons">
+          <button class="rbtn active" data-tool="pan" title="Pan">
+            <svg viewBox="0 0 24 24"><path d="M12 2v9M9 5l3-3 3 3M5 12a7 7 0 0014 0M12 14v8M9 19l3 3 3-3"/></svg>
+            Pan
+          </button>
+          <button class="rbtn" data-action="zoomIn" title="Zoom in">
+            <svg viewBox="0 0 24 24"><circle cx="10" cy="10" r="7"/><path d="M21 21l-5.5-5.5M10 7v6M7 10h6"/></svg>
+            Zoom In
+          </button> &nbsp;
+          <button class="rbtn" data-action="zoomOut" title="Zoom out">
+            <svg viewBox="0 0 24 24"><circle cx="10" cy="10" r="7"/><path d="M21 21l-5.5-5.5M7 10h6"/></svg>
+            Zoom Out
+          </button> &nbsp;
+          <button class="rbtn" data-action="fullExtent" title="Full extent">
+            <svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+            Full Extent
+          </button> &nbsp;
+          <button class="rbtn" data-action="gotoToggle" title="Go to XY">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
+            Go To XY
+          </button>
+        </div>
+      </div> &nbsp;
+
+      <div class="rgroup">
+        <div class="rgroup-buttons">
+          <button class="rbtn" id="create-feat-trigger" title="Create a new point, line, or polygon feature">
+            <svg viewBox="0 0 24 24"><path d="M12 3l8 6-3 9H7l-3-9z" opacity=".35"/><path d="M12 5v14M5 12h14" stroke-width="2"/></svg>
+            <span class="rbtn-text">Create Feature ▾</span>
+          </button>&nbsp; &nbsp;
+          <button class="rbtn" data-tool="edit-feature" title="Edit Feature — click a feature to select it, edit attributes and drag vertices">
+            <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            Edit
+          </button>
+        </div>
+      </div>
+
+      <div class="rgroup">
+        <div class="rgroup-buttons">
+          <button class="rbtn" id="sel-menu-trigger" title="Selection tools">
+            <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" stroke-dasharray="3 2"/><path d="M8 12l3 3 5-5"/></svg>
+            <span class="rbtn-text">Select ▾</span>
+          </button>
+          <button class="rbtn" data-action="clearSelection" title="Clear selection (Escape)">
+            <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9l6 6M15 9l-6 6"/></svg>
+            Clear
+          </button>
+        </div>
+      </div>
+
+      <div class="rgroup">
+        <div class="rgroup-buttons">
+          <button class="rbtn" data-tool="measure-dist" title="Measure distance">
+            <svg viewBox="0 0 24 24"><path d="M3 17L17 3M5 19l2-2M9 15l2-2M13 11l2-2"/></svg>
+            Distance
+          </button>
+          <button class="rbtn" data-tool="measure-area" title="Measure area">
+            <svg viewBox="0 0 24 24"><path d="M4 6h16v12H4z"/><path d="M4 6l16 12M20 6L4 18" opacity=".4"/></svg>
+            Area
+          </button>
+          <button class="rbtn" data-action="clearMeasure" title="Clear sketches">
+            <svg viewBox="0 0 24 24"><path d="M19 7l-1 12a2 2 0 01-2 2H8a2 2 0 01-2-2L5 7M9 7V4h6v3M3 7h18"/></svg>
+            Clear
+          </button>
+        </div>
+        
+      </div>
+
+      <div class="rgroup">
+        <div class="rgroup-buttons">
+          <button class="rbtn" data-action="addBookmark" title="Add bookmark at current extent">
+            <svg viewBox="0 0 24 24"><path d="M6 3h12v18l-6-4-6 4z"/></svg>
+            Add Bkmk
+          </button> &nbsp; &nbsp;
+          <button class="rbtn" data-action="showBookmarks" title="View bookmarks">
+            <svg viewBox="0 0 24 24"><path d="M6 3h8v18l-4-4-4 4z"/><path d="M16 7h4M16 11h4M16 15h4" opacity=".5"/></svg>
+            Bookmarks
+          </button>
+        </div>
+      </div>
+
+      <div class="rgroup">
+        <div class="rgroup-buttons">
+          <button class="rbtn" data-action="toggleBasemap" title="Basemap gallery">
+            <svg viewBox="0 0 24 24"><path d="M3 7l9-4 9 4-9 4z"/><path d="M3 12l9 4 9-4M3 17l9 4 9-4"/></svg>
+            Basemap
+          </button>
+        </div>
+      </div>
+
+      <div class="rgroup rgroup-push-right">
+        <div class="rgroup-buttons">
+          <button class="rbtn" id="btn-add-geojson" title="GeoJSON, zipped Shapefile (.zip), .shp+.dbf+.prj, or GeoTIFF (.tif/.tiff)">
+            <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke-width="2"/></svg>
+            Add Data
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- EDIT TAB -->
+    <div id="tab-edit" class="ribbon-body">
+      <div class="rgroup">
+        <div class="rgroup-buttons">
+          <button class="rbtn" data-tool="move-feature" title="Move — click and drag a whole feature to a new location">
+            <svg viewBox="0 0 24 24"><path d="M12 2v20M2 12h20" stroke-width="2"/><path d="M12 2l-3 3M12 2l3 3M12 22l-3-3M12 22l3-3M2 12l3-3M2 12l3 3M22 12l-3-3M22 12l3 3"/></svg>
+            Move
+          </button>
+          <button class="rbtn" data-gp="merge" title="Merge — combine features from two layers into one">
+            <svg viewBox="0 0 24 24"><rect x="3" y="5" width="7" height="7" rx="1"/><rect x="14" y="12" width="7" height="7" rx="1" opacity=".5"/><path d="M10 8h4a3 3 0 013 3v1"/></svg>
+            Merge
+          </button>
+          <button class="rbtn" data-action="explodeSelected" title="Explode — split selected multi-part features into single-part features">
+            <svg viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1" opacity=".7"/><rect x="4" y="14" width="6" height="6" rx="1" opacity=".5"/><rect x="14" y="14" width="6" height="6" rx="1" opacity=".3"/></svg>
+            Explode
+          </button>
+          <button class="rbtn" data-gp="erase" title="Erase — remove portions that overlap the erase features">
+            <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" opacity=".25"/><path d="M8 8l8 8M8 16l8-8" stroke-width="2"/></svg>
+            Erase
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ANALYSIS TAB -->
+    <div id="tab-analysis" class="ribbon-body">
+      <div class="rgroup">
+        <div class="rgroup-buttons">
+          <button class="rbtn" data-gp="buffer" title="Buffer — create buffer polygons around features at a specified distance">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="9" opacity=".4"/></svg>
+            Buffer
+          </button>
+          <button class="rbtn" data-gp="near" title="Near — find nearest feature in another layer and add NEAR_DIST attribute">
+            <svg viewBox="0 0 24 24"><circle cx="6" cy="18" r="2.5" fill="currentColor" fill-opacity=".8" stroke="none"/><circle cx="18" cy="6" r="2.5" fill="currentColor" fill-opacity=".4" stroke="none"/><path d="M6 18L18 6" stroke-dasharray="3 2"/><path d="M12 8l2 4-4-1z" fill="currentColor" stroke="none"/></svg>
+            Near
+          </button>
+        </div>
+      </div>
+
+      <div class="rgroup">
+        <div class="rgroup-buttons">
+          <button class="rbtn" data-gp="clip" title="Clip — extract portions that fall within clip features">
+            <svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><path d="M20 4L7.5 14M20 20L7.5 10"/></svg>
+            Clip
+          </button>
+          <button class="rbtn" data-gp="erase" title="Erase — remove portions that overlap the erase features">
+            <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" opacity=".25"/><path d="M8 8l8 8M8 16l8-8" stroke-width="2"/></svg>
+            Erase
+          </button>
+        </div>
+      </div>
+
+      <div class="rgroup">
+        <div class="rgroup-buttons">
+          <button class="rbtn" data-gp="intersect" title="Intersect — compute geometric intersection of two polygon layers">
+            <svg viewBox="0 0 24 24"><circle cx="9" cy="12" r="7"/><circle cx="15" cy="12" r="7" opacity=".5"/></svg>
+            Intersect
+          </button>
+          <button class="rbtn" data-gp="union" title="Union — compute geometric union of two polygon layers">
+            <svg viewBox="0 0 24 24"><circle cx="9" cy="12" r="7" opacity=".7"/><circle cx="15" cy="12" r="7" opacity=".4"/></svg>
+            Union
+          </button>
+          <button class="rbtn" data-gp="merge" title="Merge — combine features from two layers into one">
+            <svg viewBox="0 0 24 24"><rect x="3" y="5" width="7" height="7" rx="1"/><rect x="14" y="12" width="7" height="7" rx="1" opacity=".5"/><path d="M10 8h4a3 3 0 013 3v1"/></svg>
+            Merge
+          </button>
+          <button class="rbtn" data-gp="spatialjoin" title="Spatial Join — transfer attributes from one layer to another based on spatial relationship">
+            <svg viewBox="0 0 24 24"><circle cx="8" cy="12" r="5" opacity=".7"/><circle cx="16" cy="12" r="5" opacity=".4"/><path d="M11 9v6M13 9v6" stroke-width="1.5"/></svg>
+            Spatial Join
+          </button>
+        </div>
+      </div>
+
+      <div class="rgroup">
+        <div class="rgroup-buttons">
+          <button class="rbtn" data-gp="dissolve" title="Dissolve — merge all features in a layer into fewest features possible">
+            <svg viewBox="0 0 24 24"><circle cx="7" cy="7" r="3"/><circle cx="17" cy="7" r="3" opacity=".4"/><circle cx="12" cy="16" r="5" opacity=".7"/></svg>
+            Dissolve
+          </button>
+          <button class="rbtn" data-gp="centroid" title="Centroid — compute the centroid point of each feature">
+            <svg viewBox="0 0 24 24"><path d="M12 3l8 6-3 9H7l-3-9z"/><circle cx="12" cy="13" r="1.6" fill="currentColor" stroke="none"/></svg>
+            Centroid
+          </button> &nbsp;
+          <button class="rbtn" data-gp="convexhull" title="Convex Hull — smallest convex polygon enclosing all features">
+            <svg viewBox="0 0 24 24"><path d="M4 16L9 5l8 2 3 9-7 4z"/><circle cx="9" cy="5" r="1.2" fill="currentColor" stroke="none"/><circle cx="20" cy="16" r="1.2" fill="currentColor" stroke="none"/><circle cx="13" cy="20" r="1.2" fill="currentColor" stroke="none"/></svg>
+            Convex Hull
+          </button>
+        </div>
+      </div>
+
+      <div class="rgroup">
+        <div class="rgroup-buttons">
+          <button class="rbtn" data-gp="exportkml" title="Export to KML/KMZ — convert this layer for use in Google Earth">
+            <svg viewBox="0 0 24 24"><path d="M12 2c4 4 6 7.5 6 10.5a6 6 0 01-12 0C6 9.5 8 6 12 2z"/><circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none"/></svg>
+            To KML
+          </button> &nbsp;
+          <button class="rbtn" data-gp="importgdb" title="GDB to GPKG — select a real ESRI File Geodatabase (.gdb) folder and convert it to GeoPackage, powered by GDAL compiled to WebAssembly">
+            <svg viewBox="0 0 24 24"><ellipse cx="9" cy="5" rx="6" ry="2"/><path d="M3 5v10c0 1.1 2.7 2 6 2s6-.9 6-2V5" opacity=".6"/><path d="M15 8l6 4-6 4z"/></svg>
+            GDB to GPKG
+          </button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- VIEW TAB -->
+    <div id="tab-view" class="ribbon-body">
+      <div class="rgroup">
+        <div class="rgroup-buttons">
+          <button class="rbtn" data-action="paneContents" title="Contents pane">
+            <svg viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5" opacity=".5"/></svg>
+            Contents
+          </button>
+          <button class="rbtn" data-action="paneCatalog" title="Catalog pane">
+            <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
+            Catalog
+          </button>
+          <button class="rbtn" data-action="paneAttributes" title="Attributes pane">
+            <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="1"/><path d="M3 10h18M9 4v16"/></svg>
+            Attributes
+          </button>
+          &nbsp;
+          <button class="rbtn" data-action="paneGeoprocessing" title="Geoprocessing pane">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 00-.2-1.6l2-1.6-2-3.4-2.4.8a7 7 0 00-2.8-1.6L13 2h-2l-.6 2.6a7 7 0 00-2.8 1.6l-2.4-.8-2 3.4 2 1.6A7 7 0 005 12c0 .5.1 1.1.2 1.6l-2 1.6 2 3.4 2.4-.8a7 7 0 002.8 1.6L11 22h2l.6-2.6a7 7 0 002.8-1.6l2.4.8 2-3.4-2-1.6c.1-.5.2-1.1.2-1.6z" opacity=".45"/></svg>
+            Geoprocessing
+          </button>
+        </div>
+      </div>
+
+      <div class="rgroup">
+        <div class="rgroup-buttons">
+          <button class="rbtn" data-action="saveProject" title="Save project as a JSON file">
+            <svg viewBox="0 0 24 24"><path d="M5 3h11l3 3v15H5z"/><path d="M8 3v6h8V3M8 21v-6h8v6"/></svg>
+            Save Proj.
+          </button>
+          <button class="rbtn" data-action="openProjectTrigger" title="Open a saved project file">
+            <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
+            Open Proj.
+          </button>
+        </div>
+      </div>
+
+      <div class="rgroup">
+        <div class="rgroup-buttons">
+          <button class="rbtn" data-action="exportPrint" title="Print / export map">
+            <svg viewBox="0 0 24 24"><path d="M6 9V2h12v7M6 18h12v4H6z"/><rect x="6" y="9" width="12" height="7"/></svg>
+            Print
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div id="main">
+    <!-- Left dock: Contents / Catalog -->
+    <div id="left-panel">
+      <div class="dock-tabs" id="left-tabs">
+        <button class="dock-tab active" data-lefttab="contents">Contents</button>
+        <button class="dock-tab" data-lefttab="catalog">Catalog</button>
+      </div>
+
+      <div id="contents-view" class="dock-view">
+        <div id="layer-list"></div>
+        
+      </div>
+
+      <div id="catalog-view" class="dock-view" style="display:none;">
+        <div class="cat-tree">
+          <div class="cat-node cat-root">📁 Project</div>
+          <div class="cat-node" style="padding-left:18px">📁 Maps</div>
+          <div class="cat-leaf active" style="padding-left:34px">🗺️ Map</div>
+
+          <div class="cat-node" style="padding-left:18px">🔖 Bookmarks</div>
+          <div id="catalog-bookmarks" style="padding-left:30px"></div>
+
+          <div class="cat-node" style="padding-left:18px">🧰 Toolboxes</div>
+          <div class="cat-leaf" style="padding-left:34px">Untitled.tbx</div>
+
+          <div class="cat-node" style="padding-left:18px">🗄️ Databases</div>
+          <div id="catalog-databases"></div>
+          <div class="cat-db-connect-row">
+            <button class="btn cat-db-connect-btn" id="catalog-new-db"     type="button">+ New</button>
+            <button class="btn cat-db-connect-btn" id="catalog-add-db"     type="button">⬆ Connect</button>
+            <button class="btn cat-db-connect-btn" id="catalog-esri-btn" type="button">🌐 ArcGIS</button>
+          </div>
+        </div>
+      </div>
+      <input type="file" id="db-file-input" accept=".gpkg,.zip,.shp,.geojson,.json,.gdb,.mdb" style="display:none;">
+      <input type="file" id="gdb-folder-input" webkitdirectory multiple style="display:none;">
+    </div>
+
+    <!-- Map -->
+    <div id="map-wrap">
+      <button type="button" id="right-panel-reopen" title="Open side panel">Attributes</button>
+      <div id="search-box">
+        <input id="search-input" type="text" placeholder="Find address or place..." />
+        <div id="search-results"></div>
+      </div>
+
+      <div id="goto-box">
+        <div class="goto-row">
+          <input id="goto-lat" type="text" placeholder="Latitude" />
+          <input id="goto-lon" type="text" placeholder="Longitude" />
+          <button class="btn primary" id="goto-go">Go</button>
+        </div>
+      </div>
+
+      <!-- Create Feature dropdown -->
+      <div id="create-feat-menu">
+        <div class="sel-menu-item" data-tool="point">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="9"/></svg>
+          <span>Point</span>
+        </div>
+        <div class="sel-menu-item" data-tool="line">
+          <svg viewBox="0 0 24 24"><path d="M4 19L19 4M4 19l4-1M19 4l-1 4"/></svg>
+          <span>Line</span>
+        </div>
+        <div class="sel-menu-item" data-tool="polygon">
+          <svg viewBox="0 0 24 24"><path d="M12 3l8 6-3 9H7l-3-9z"/></svg>
+          <span>Polygon</span>
+        </div>
+      </div>
+
+      <!-- Selection tool dropdown -->
+      <div id="sel-tool-menu">
+        <div class="sel-menu-item" data-tool="select">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke-width="2"/></svg>
+          <span>Identify</span><kbd>I</kbd>
+        </div>
+        <div class="sel-menu-item" data-tool="select-rect">
+          <svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="1" stroke-dasharray="3 2"/></svg>
+          <span>Rectangle Select</span><kbd>R</kbd>
+        </div>
+        <div class="sel-menu-item" data-tool="select-lasso">
+          <svg viewBox="0 0 24 24"><path d="M5 12C5 8 8 5 12 5s7 2.5 7 7-3 7-7 7c-1.8 0-3.5-.6-4.8-1.7L5 20" stroke-dasharray="3 2"/><circle cx="5" cy="20" r="1.5" fill="currentColor" stroke="none"/></svg>
+          <span>Lasso Select</span><kbd>L</kbd>
+        </div>
+        <div class="sel-menu-sep"></div>
+        <div class="sel-menu-item" data-action="select-by-attr">
+          <svg viewBox="0 0 24 24"><path d="M4 6h16v2H4zM4 11h16v2H4zM4 16h10v2H4z"/></svg>
+          <span>Select by Attribute</span>
+        </div>
+        <div class="sel-menu-item" data-action="select-by-loc">
+          <svg viewBox="0 0 24 24"><path d="M12 2l4 8-4 12-4-12z"/></svg>
+          <span>Select by Location</span>
+        </div>
+        <div class="sel-menu-sep"></div>
+        <div class="sel-menu-item" data-action="select-all">
+          <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" stroke-dasharray="3 2"/><path d="M8 12l3 3 5-5"/></svg>
+          <span>Select All</span>
+        </div>
+        <div class="sel-menu-item" data-action="invert-sel">
+          <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" fill="currentColor" fill-opacity=".15"/><path d="M9 3v18M3 9h18" opacity=".5"/><circle cx="6" cy="6" r="2" fill="currentColor" stroke="none"/><circle cx="18" cy="18" r="2" fill="currentColor" stroke="none"/></svg>
+          <span>Invert Selection</span>
+        </div>
+        <div class="sel-menu-item" data-action="clearSelection">
+          <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9l6 6M15 9l-6 6"/></svg>
+          <span>Clear Selection</span>
+        </div>
+      </div>
+
+      <div id="basemap-gallery">
+        <div class="bm-opt active" data-bm="streets"><div class="swatch" style="background:#cfd6c5"></div><span class="basemaps">Streets</span></div>
+        <div class="bm-opt" data-bm="topo"><div class="swatch" style="background:#d8cdb8"></div><span class="basemaps">Topographic</span></div>
+        <div class="bm-opt" data-bm="imagery"><div class="swatch" style="background:#4a5a3c"></div><span class="basemaps">Imagery</span></div>
+        <div class="bm-opt" data-bm="dark"><div class="swatch" style="background:#2b2b2b"></div><span class="basemaps">Dark Gray</span></div>
+        <div class="bm-opt" data-bm="osm"><div class="swatch" style="background:#e8e4d8"></div><span class="basemaps">OpenStreetMap</span></div>
+      </div>
+
+      <div id="measure-readout"></div>
+
+      <div id="map"></div>
+
+      <div id="table-dock">
+        <div class="panel-header">
+          <span id="table-title">Attribute Table</span>
+          <button class="btn tbl-hdr-btn" id="table-clear-filter">Show All Layers</button>
+          <button class="btn tbl-hdr-btn" id="table-export-csv" title="Export table as CSV">Export CSV</button>
+          <label class="tbl-hdr-label" id="table-sel-filter-wrap"><input type="checkbox" id="table-sel-only"> Selected only</label>
+          <button class="close-x" id="table-close">&times;</button>
+        </div>
+        <div id="table-scroll">
+          <table>
+            <thead><tr id="table-head"></tr></thead>
+            <tbody id="table-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Layer right-click context menu -->
+    <div id="ctx-menu" class="ctx-menu"></div>
+
+    <!-- Column right-click context menu (attribute table) -->
+    <div id="col-ctx-menu" class="ctx-menu"></div>
+
+    <!-- Field Calculator / Statistics floating modal -->
+    <div id="fc-modal-overlay" class="fc-modal-overlay">
+      <div id="fc-modal" class="fc-modal"></div>
+    </div>
+
+    <!-- Layer popover (Symbology / Definition Query / Properties) -->
+    <div id="layer-popover" class="layer-popover">
+      <div class="popover-header">
+        <span id="popover-title">Layer</span>
+        <button class="close-x" id="popover-close">&times;</button>
+      </div>
+      <div id="popover-body"></div>
+    </div>
+
+    <!-- Right dock: Attributes / Geoprocessing -->
+    <div id="right-panel-resizer" title="Drag to resize"></div>
+    <div id="right-panel">
+      <div class="dock-tabs" id="right-tabs">
+        <button class="dock-tab active" data-righttab="attributes">Attributes</button>
+        <button class="dock-tab" data-righttab="geoprocessing">Geoprocessing</button>
+        <button class="dock-close-btn" id="right-panel-close" title="Close panel">&#x2715;</button>
+      </div>
+
+      <div id="attributes-view" class="dock-view">
+        <div id="attr-content"><div id="attr-empty">No feature selected.<br>Use the Identify tool and click a feature on the map.</div></div>
+      </div>
+
+      <div id="geoprocessing-view" class="dock-view" style="display:none;">
+        <div id="gp-empty">Choose a tool from the Analysis tab to begin.</div>
+        <div id="gp-form" style="display:none;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Status bar -->
+  <div id="statusbar">
+    <span id="status-tool" class="tool-tag">Pan</span>
+    <span id="status-coords">Lon: —, Lat: —</span>
+    <span id="status-scale">Zoom: —</span>
+    <span id="status-selection">Selected: 0</span>
+    <span class="spacer"></span>
+    <span id="status-layers"> </span>
+    <div id="crs-picker">
+      <button type="button" id="status-crs" title="Click to change coordinate system">WGS 84 (EPSG:4326)</button>
+      <div id="crs-dropdown">
+        <div class="crs-section">Geographic</div>
+        <div class="crs-opt active" data-crs="wgs84">WGS 84 (EPSG:4326)</div>
+        <div class="crs-section">Projected</div>
+        <div class="crs-opt" data-crs="webmercator">Mercator (EPSG:3857)</div>
+        <div class="crs-opt" data-crs="albers">N.America Albers Equal Area Conic</div>
+        <div class="crs-opt" data-crs="lcc">Lambert Conformal Conic</div>
+        <div class="crs-opt" data-crs="tmerc">Transverse Mercator (UTM 15N)</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+  <!-- ==================== PRINT LAYOUT OVERLAY ==================== -->
+  <div id="layout-overlay">
+
+    <!-- Toolbar -->
+    <div id="layout-toolbar">
+      <button type="button" class="lt-btn" id="lt-close" title="Exit Layout View">
+        <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2.2"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+        Back to Map
+      </button>
+      <div class="lt-divider"></div>
+
+      <span class="lt-label">Insert</span>
+      <button type="button" class="lt-btn" data-lt-add="map-frame" title="Add a map frame">
+        <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="1"/><circle cx="8" cy="9" r="2"/><path d="M3 17l5-5 4 3 4-4 5 5"/></svg>
+        Map Frame
+      </button>
+      <button type="button" class="lt-btn" data-lt-add="legend" title="Add legend">
+        <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="1.8"><rect x="3" y="4" width="4" height="4" fill="currentColor" stroke="none"/><line x1="10" y1="6" x2="21" y2="6"/><rect x="3" y="11" width="4" height="4" fill="currentColor" stroke="none" opacity=".5"/><line x1="10" y1="13" x2="21" y2="13"/><rect x="3" y="18" width="4" height="4" fill="currentColor" stroke="none" opacity=".25"/><line x1="10" y1="20" x2="17" y2="20"/></svg>
+        Legend
+      </button>
+      <button type="button" class="lt-btn" data-lt-add="title" title="Add title">
+        <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M4 6h16M12 6v14M9 20h6"/></svg>
+        Title
+      </button>
+      <button type="button" class="lt-btn" data-lt-add="north-arrow" title="Add north arrow">
+        <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M12 3v18"/><path d="M8 7l4-4 4 4" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="2"/></svg>
+        North Arrow
+      </button>
+      <button type="button" class="lt-btn" data-lt-add="scale-bar" title="Add scale bar">
+        <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="8" x2="2" y2="16"/><line x1="12" y1="9" x2="12" y2="15" stroke-width="1.5"/><line x1="22" y1="8" x2="22" y2="16"/></svg>
+        Scale Bar
+      </button>
+      <button type="button" class="lt-btn" data-lt-add="text" title="Add text box">
+        <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="1"/><path d="M7 9h10M7 12h7M7 15h5"/></svg>
+        Text Box
+      </button>
+      <div class="lt-divider"></div>
+
+      <span class="lt-label">Page</span>
+      <select class="lt-select" id="lt-page-size" title="Page size and orientation">
+        <option value="letter-land">Letter Landscape</option>
+        <option value="letter-port">Letter Portrait</option>
+        <option value="a4-land">A4 Landscape</option>
+        <option value="a4-port">A4 Portrait</option>
+      </select>
+      <div class="lt-divider"></div>
+
+      <button type="button" class="lt-btn lt-primary" id="lt-export-png">
+        <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="1"/><circle cx="9" cy="9" r="2"/><path d="M3 17l4-4 4 4 4-5 6 6"/></svg>
+        Export PNG
+      </button>
+      <button type="button" class="lt-btn lt-primary" id="lt-export-pdf">
+        <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h4"/></svg>
+        Export PDF
+      </button>
+    </div>
+
+    <!-- Content: page canvas + properties panel -->
+    <div id="layout-content">
+      <div id="layout-canvas-wrap">
+        <div id="layout-page"></div>
+      </div>
+
+      <div id="layout-props">
+        <div id="layout-props-title">Element Properties</div>
+        <div id="layout-props-body">
+          <p class="lp-empty">Click an element to select it and edit properties here.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  <!-- ==================== END LAYOUT OVERLAY ==================== -->
+</div>
+
+<input type="file" id="file-input" accept=".geojson,.json,.zip,.shp,.dbf,.shx,.prj,.cpg,.tif,.tiff" multiple />
+<input type="file" id="project-file-input" accept=".json" />
+
+<script src="js/leaflet.js"></script>
+<script src="js/leaflet-heat.js"></script>
+<script src="js/leaflet.draw.js"></script>
+<script src="js/turf.min.js"></script>
+<script src="js/shp.js"></script>
+<script src="js/proj4.js"></script>
+<script src="js/proj4leaflet.min.js"></script>
+<script src="js/html2canvas.min.js"></script>
+<script src="js/jspdf.umd.min.js"></script>
+<script src="js/script.js?v=2"></script>
+<script src="js/layout.js"></script>
+</body>
+</html>
