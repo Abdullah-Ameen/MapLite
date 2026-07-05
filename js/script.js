@@ -1954,6 +1954,69 @@ document.getElementById('right-panel-reopen').addEventListener('click', () => {
   map.invalidateSize();
 });
 
+// ---------- Mobile: left/right dock panels become overlay drawers ----------
+(function(){
+  const leftPanel = document.getElementById('left-panel');
+  const rightPanel = document.getElementById('right-panel');
+  const mapWrap = document.getElementById('map-wrap');
+  const backdrop = document.getElementById('mobile-backdrop');
+  const toggleBtn = document.getElementById('left-panel-toggle');
+  const closeBtn = document.getElementById('left-panel-close');
+  if(!leftPanel || !rightPanel || !backdrop) return;
+
+  const MOBILE_BP = 900;
+  const isMobile = () => window.innerWidth <= MOBILE_BP;
+  let syncing = false;
+
+  function sync(justOpened){
+    if(syncing) return;
+    syncing = true;
+    if(isMobile()){
+      const leftOpen = !leftPanel.classList.contains('collapsed');
+      const rightOpen = !rightPanel.classList.contains('collapsed');
+      // only one drawer open at a time on mobile — the one just opened wins
+      if(leftOpen && rightOpen){
+        if(justOpened === 'right'){
+          leftPanel.classList.add('collapsed');
+        } else {
+          rightPanel.classList.add('collapsed');
+          mapWrap.classList.add('right-collapsed');
+        }
+      }
+      backdrop.classList.toggle('show', !leftPanel.classList.contains('collapsed') || !rightPanel.classList.contains('collapsed'));
+    } else {
+      backdrop.classList.remove('show');
+    }
+    syncing = false;
+  }
+
+  new MutationObserver(() => sync('left')).observe(leftPanel, { attributes:true, attributeFilter:['class'] });
+  new MutationObserver(() => sync('right')).observe(rightPanel, { attributes:true, attributeFilter:['class'] });
+
+  if(toggleBtn){
+    toggleBtn.addEventListener('click', () => {
+      leftPanel.classList.toggle('collapsed');
+    });
+  }
+  if(closeBtn){
+    closeBtn.addEventListener('click', () => leftPanel.classList.add('collapsed'));
+  }
+  backdrop.addEventListener('click', () => {
+    leftPanel.classList.add('collapsed');
+    rightPanel.classList.add('collapsed');
+    mapWrap.classList.add('right-collapsed');
+  });
+
+  // Start with both drawers closed on a mobile-sized screen so the map is fully visible.
+  if(isMobile()){
+    leftPanel.classList.add('collapsed');
+    rightPanel.classList.add('collapsed');
+    mapWrap.classList.add('right-collapsed');
+  }
+
+  window.addEventListener('resize', () => { sync(); map.invalidateSize(); });
+})();
+
 // ---------- Right panel: drag-to-resize (Attributes / Geoprocessing dock) ----------
 (function(){
   const resizer = document.getElementById('right-panel-resizer');

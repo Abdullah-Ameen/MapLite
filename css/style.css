@@ -1019,3 +1019,65 @@ input[type=file]{display:none;}
 }
 .gdb-geom-btn:hover{ border-color:var(--accent); color:var(--text); }
 .gdb-geom-btn.active{ border-color:var(--accent); background:var(--accent-soft); color:#cfe9fb; font-weight:600; }
+
+/* ================================================================
+   RESPONSIVE / MOBILE
+   #left-panel and #right-panel become overlay drawers instead of
+   pushing #map-wrap, so the map always keeps the full viewport.
+   ================================================================ */
+#left-panel-toggle{ display:none; }
+#left-panel-close{ display:none; }
+#mobile-backdrop{ display:none; }
+
+@media (max-width: 900px){
+  #main{ position:relative; }
+
+  #left-panel, #right-panel{
+    position:absolute; top:0; bottom:0;
+    width:min(82vw, 300px) !important;
+    z-index:850;
+    box-shadow:2px 0 18px rgba(0,0,0,0.5);
+  }
+  #left-panel{ left:0; }
+  #right-panel{ right:0; box-shadow:-2px 0 18px rgba(0,0,0,0.5); }
+  #right-panel-resizer{ display:none; }
+
+  #left-panel-toggle{
+    display:flex; align-items:center; justify-content:center;
+    width:34px; height:34px; flex:0 0 auto; margin-right:4px;
+    background:transparent; border:1px solid rgba(255,255,255,0.15); border-radius:5px;
+    color:var(--text); cursor:pointer;
+  }
+  #left-panel-toggle:hover{ background:rgba(255,255,255,0.08); }
+  #left-panel-close{ display:flex; }
+
+  #mobile-backdrop.show{
+    display:block; position:absolute; inset:0; z-index:800;
+    background:rgba(0,0,0,0.45);
+  }
+
+  /* Reopen strip: bigger touch target */
+  #right-panel-reopen{ padding:14px 6px; font-size:11px; }
+
+  /* Ribbon: let tabs scroll instead of wrapping/overflowing, tighten spacing */
+  #ribbon-tabs{ overflow-x:auto; }
+  .rgroup-push-right{ margin-right:12px; }
+
+  /* Compact ribbon buttons are a bit small for touch — bump back up slightly */
+  #ribbon.ribbon-compact .rbtn{ width:42px; height:42px; }
+  #ribbon.ribbon-compact .rbtn svg{ width:22px; height:22px; }
+
+  /* Floating widgets: avoid overlap on narrow viewports */
+  #search-box{ width:min(55vw, 220px); }
+  #goto-box{ left:12px; top:58px; }
+  #basemap-gallery{ width:min(60vw, 200px); }
+}
+
+@media (max-width: 480px){
+  /* Status bar: keep the essentials, drop the rest so it doesn't overflow */
+  #status-coords, #status-scale, #status-layers{ display:none; }
+  #statusbar{ gap:10px; padding:0 8px; }
+
+  #table-dock{ height:45vh; }
+  .panel-header{ flex-wrap:wrap; row-gap:6px; }
+}
