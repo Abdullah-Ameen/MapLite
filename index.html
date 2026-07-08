@@ -32,11 +32,12 @@
         <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
       </button>
       <div class="ribbon-brand">
-        <img src="data/logo.png" alt="">
+        <img src="data/logo1.png" alt="">
       </div> &nbsp;
       <div class="ribbon-tab active" data-tab="map">Map</div>
       <div class="ribbon-tab" data-tab="edit">Edit</div>
       <div class="ribbon-tab" data-tab="analysis">Analysis</div>
+      <div class="ribbon-tab" data-tab="raster">Raster Analysis</div>
       <div class="ribbon-tab" data-tab="view">View</div>
     </div>
 
@@ -235,6 +236,15 @@
 
       <div class="rgroup">
         <div class="rgroup-buttons">
+          <button class="rbtn" data-gp="routeanalysis" title="Route Analysis — split a route line everywhere it crosses reference layers, tagging each segment by what it crosses">
+            <svg viewBox="0 0 24 24"><path d="M3 20c4-1 4-7 8-7s4 6 8 7" stroke-dasharray="4 3"/><circle cx="7" cy="17.2" r="1.6" fill="currentColor" stroke="none"/><circle cx="17" cy="17.2" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="6" r="2" opacity=".5"/></svg>
+            Route Analysis
+          </button>
+        </div>
+      </div>
+
+      <div class="rgroup">
+        <div class="rgroup-buttons">
           <button class="rbtn" data-gp="exportkml" title="Export to KML/KMZ — convert this layer for use in Google Earth">
             <svg viewBox="0 0 24 24"><path d="M12 2c4 4 6 7.5 6 10.5a6 6 0 01-12 0C6 9.5 8 6 12 2z"/><circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none"/></svg>
             To KML
@@ -246,6 +256,26 @@
         </div>
       </div>
 
+    </div>
+
+    <!-- RASTER ANALYSIS TAB -->
+    <div id="tab-raster" class="ribbon-body">
+      <div class="rgroup">
+        <div class="rgroup-buttons">
+          <button class="rbtn" data-gp="hillshade" title="Hillshade — shaded relief from an elevation raster, given a sun azimuth and altitude">
+            <svg viewBox="0 0 24 24"><path d="M2 19l6-10 4 5 3-4 7 9z"/><circle cx="17" cy="6" r="2.5" opacity=".6"/></svg>
+            Hillshade
+          </button>
+          <button class="rbtn" data-gp="slope" title="Slope — steepness in degrees at each cell of an elevation raster">
+            <svg viewBox="0 0 24 24"><path d="M3 20h18"/><path d="M3 20L15 4l6 16"/></svg>
+            Slope
+          </button>
+          <button class="rbtn" data-gp="ndvi" title="NDVI — vegetation index computed from a multiband raster's Red and Near-Infrared bands">
+            <svg viewBox="0 0 24 24"><path d="M12 21c-4-3-7-6.5-7-10.5A7 7 0 0112 3a7 7 0 017 7.5c0 4-3 7.5-7 10.5z" opacity=".4"/><path d="M12 21V8"/></svg>
+            NDVI
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- VIEW TAB -->

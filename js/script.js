@@ -14,7 +14,7 @@ map.fitBounds(US_BOUNDS);
 
 // ---------- Basemaps (public Esri tile services + OSM, no API key required) ----------
 const basemaps = {
-  streets: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: '<span class="attribution"> Esri — World Street Map</span>' }),
+  streets: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: '<span class="attribution"> ESRI — World Street Map</span>' }),
   topo:    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Esri — World Topo Map' }),
   imagery: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Esri — World Imagery' }),
   dark:    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', { maxZoom: 16, attribution: 'Esri — Dark Gray Canvas' }),
@@ -80,8 +80,22 @@ function popupHtml(props, fields){
 let layerIdCounter = 1;
 const layers = {}; // id -> { name, leafletLayer, visible, color, type, opacity, weight, fillOpacity, radius, customFill, allFeatures, labelsOn, labelField, queryExpr, symbologyMode, symbologyConfig }
 
-function addLayerToRegistry(name, leafletLayer, color, type){
-  const id = 'L' + (layerIdCounter++);
+// Browser-side autosave (see the implementation near the end of this file).
+// Declared up here, not just near that implementation, because scheduleAutosave()
+// gets called from renderLayerList()/syncLinkedFeatureClass() — which run during
+// the very first render at startup — long before restoreAutosaveState() has had
+// a chance to run and flip this back to false.
+let _autosaveTimer = null;
+let _autosaveRestoring = true;
+
+function addLayerToRegistry(name, leafletLayer, color, type, forcedId){
+  const id = forcedId || ('L' + (layerIdCounter++));
+  if(forcedId){
+    // Restoring a specific id from autosave — make sure future auto-ids
+    // can't collide with it.
+    const n = parseInt(String(forcedId).replace(/^L/, ''), 10);
+    if(!isNaN(n) && n >= layerIdCounter) layerIdCounter = n + 1;
+  }
   layers[id] = {
     name, leafletLayer, visible: true,
     color: color || '#3da7e0', strokeColor: color || '#3da7e0', fillColor: color || '#3da7e0',
@@ -92,7 +106,11 @@ function addLayerToRegistry(name, leafletLayer, color, type){
     labelBold: true, labelItalic: false, labelUppercase: true, labelDirection: 'top',
     symbologyMode: 'single', // 'single', 'graduated', 'unique'
     symbologyConfig: { field: null, minColor: '#f7fbff', maxColor: '#08306b', breaks: 5, colorRamp: 'Blues', classificationMethod: 'quantile', uniqueColors: {}, fillOpacity: 0.8,
-      heatField: null, heatRadius: 25, heatBlur: 15, heatMax: 1.0, heatMinColor: '#0000ff', heatMidColor: '#00ff00', heatMaxColor: '#ff0000' }
+      heatField: null, heatRadius: 25, heatBlur: 15, heatMax: 1.0, heatMinColor: '#0000ff', heatMidColor: '#00ff00', heatMaxColor: '#ff0000' },
+    // Cartographic effects — apply on top of whichever symbology mode is
+    // active, rendered as CSS filter: drop-shadow() on each feature's SVG path.
+    effects: { shadowEnabled: false, shadowColor: '#000000', shadowBlur: 4, shadowOffsetX: 2, shadowOffsetY: 2,
+      glowEnabled: false, glowColor: '#3da7e0', glowBlur: 6 }
   };
   // Track every individual feature layer (for Definition Query, Labels, Properties, Export)
   // even ones later hidden by a query, since those get add/removed from the map dynamically.
@@ -101,6 +119,7 @@ function addLayerToRegistry(name, leafletLayer, color, type){
     leafletLayer.on('layeradd', e => {
       if(!layers[id]) return;
       if(!layers[id].allFeatures.includes(e.layer)) layers[id].allFeatures.push(e.layer);
+      applyLayerEffects(layers[id], [e.layer]);
     });
   }
   leafletLayer.addTo(map);
@@ -125,6 +144,31 @@ function applyLayerStyle(lyr){
   const style = getLayerStyle(lyr);
   if(lyr.leafletLayer.setStyle) lyr.leafletLayer.setStyle(style);
   else if(lyr.leafletLayer.eachLayer) lyr.leafletLayer.eachLayer(l => { if(l.setStyle) l.setStyle(style); });
+  applyLayerEffects(lyr);
+}
+
+// Cartographic effects (shadow / outer glow) — these aren't Leaflet style
+// options, so instead of setStyle() this sets a CSS filter directly on each
+// feature's rendered SVG element. Applies on top of whatever symbology mode
+// (single/graduated/unique) is active, since it's a rendering effect, not a
+// classification. Pass `features` to touch just one feature (e.g. a newly
+// drawn one) instead of the whole layer.
+function applyLayerEffects(lyr, features){
+  const eff = lyr && lyr.effects;
+  if(!eff) return;
+  const filters = [];
+  if(eff.shadowEnabled){
+    filters.push(`drop-shadow(${eff.shadowOffsetX}px ${eff.shadowOffsetY}px ${eff.shadowBlur}px ${eff.shadowColor})`);
+  }
+  if(eff.glowEnabled){
+    filters.push(`drop-shadow(0 0 ${eff.glowBlur}px ${eff.glowColor})`);
+    filters.push(`drop-shadow(0 0 ${eff.glowBlur}px ${eff.glowColor})`); // doubled — a single pass reads too faint as a "glow"
+  }
+  const filterStr = filters.join(' ');
+  (features || lyr.allFeatures).forEach(l => {
+    const el = l._path || (l.getElement && l.getElement());
+    if(el) el.style.filter = filterStr;
+  });
 }
 
 function removeLayer(id){
@@ -135,6 +179,7 @@ function removeLayer(id){
   if(layers[id]._heatLayer) map.removeLayer(layers[id]._heatLayer);
   map.removeLayer(layers[id].leafletLayer);
   delete layers[id];
+  idbDelete('layers', id).catch(() => {}); // drop it from autosave right away, don't wait for the debounce
   renderLayerList();
   updateStatusLayers();
   refreshTable();
@@ -168,6 +213,7 @@ function buildLegendHTML(lyr){
 }
 
 function renderLayerList(){
+  scheduleAutosave();
   const list = document.getElementById('layer-list');
   list.innerHTML = '';
   const ids = Object.keys(layers).reverse();
@@ -294,7 +340,10 @@ function openLayerContextMenu(id, x, y){
   const layerIds = Object.keys(layers);
   const layerIdx = layerIds.indexOf(id);
   const isRaster = lyr.type === 'raster';
-  const vectorOnlyItems = isRaster ? '' : `
+  const rasterSymbologyItem = (isRaster && lyr.rasterRender)
+    ? `<div class="ctx-item" data-ctx="symbology">🎨 Symbology…</div><div class="ctx-sep"></div>`
+    : '';
+  const vectorOnlyItems = isRaster ? rasterSymbologyItem : `
     <div class="ctx-item" data-ctx="attrTable">📋 Attribute Table</div>
     <div class="ctx-item" data-ctx="selectAll">☑️ Select All Features</div>
     <div class="ctx-sep"></div>
@@ -344,7 +393,7 @@ function handleLayerContextAction(action, id){
       document.getElementById('table-dock').classList.add('show');
       refreshTable();
       break;
-    case 'symbology': openSymbologyPopover(id); break;
+    case 'symbology': (lyr.rasterRender ? openRasterSymbologyPopover(id) : openSymbologyPopover(id)); break;
     case 'query': openQueryPopover(id); break;
     case 'popup': openPopupConfigPopover(id); break;
     case 'labels': toggleLabels(id); break;
@@ -421,12 +470,21 @@ function getFeatureStyle(lyr, feature){
     radius: lyr.radius
   };
 
+  let thematicColor = null;
   if(lyr.symbologyMode === 'graduated' && lyr.symbologyConfig.field){
     const val = parseFloat(feature.properties?.[lyr.symbologyConfig.field]);
-    baseStyle.fillColor = getGraduatedColor(lyr, val);
+    thematicColor = getGraduatedColor(lyr, val);
   } else if(lyr.symbologyMode === 'unique' && lyr.symbologyConfig.field){
     const val = feature.properties?.[lyr.symbologyConfig.field];
-    baseStyle.fillColor = getUniqueColor(lyr, val);
+    thematicColor = getUniqueColor(lyr, val);
+  }
+
+  if(thematicColor){
+    baseStyle.fillColor = thematicColor;
+    // Lines have no fill to show a thematic color with — the stroke IS the
+    // visible line, so that's what needs to carry the per-category color.
+    const geomType = feature.geometry && feature.geometry.type;
+    if(geomType === 'LineString' || geomType === 'MultiLineString') baseStyle.color = thematicColor;
   }
 
   return baseStyle;
@@ -536,6 +594,7 @@ function applyThematicStyle(lyr){
       }
     });
   }
+  applyLayerEffects(lyr);
 }
 
 function removeHeatLayer(lyr){
@@ -581,8 +640,79 @@ function applyHeatmapStyle(lyr){
   }).addTo(map);
 }
 
+// Recolors a raster-analysis output (currently: Hillshade) by remapping its
+// stored grayscale value through a min/max ramp — a 256-entry lookup table,
+// so this stays fast even on multi-megapixel rasters — instead of redoing
+// the underlying analysis math.
+function recolorRasterLayer(lyr, minColor, maxColor){
+  const rr = lyr.rasterRender;
+  if(!rr) return;
+  const lut = new Uint8Array(256 * 3);
+  for(let i = 0; i < 256; i++){
+    const hex = interpolateColor(minColor, maxColor, i / 255);
+    const v = parseInt(hex.slice(1), 16);
+    lut[i*3] = (v >> 16) & 255; lut[i*3+1] = (v >> 8) & 255; lut[i*3+2] = v & 255;
+  }
+  const { width, height, grayscale } = rr;
+  const canvas = document.createElement('canvas');
+  canvas.width = width; canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(width, height);
+  for(let idx = 0; idx < width * height; idx++){
+    const p = idx * 4;
+    const a = grayscale[p+3];
+    img.data[p+3] = a;
+    if(a === 0) continue;
+    const gray = grayscale[p];
+    img.data[p] = lut[gray*3]; img.data[p+1] = lut[gray*3+1]; img.data[p+2] = lut[gray*3+2];
+  }
+  ctx.putImageData(img, 0, 0);
+  lyr.leafletLayer.setUrl(canvas.toDataURL());
+  rr.minColor = minColor;
+  rr.maxColor = maxColor;
+}
+
+function openRasterSymbologyPopover(id){
+  const lyr = layers[id];
+  const rr = lyr.rasterRender;
+  if(!rr) return;
+  document.getElementById('popover-title').textContent = 'Symbology — ' + lyr.name;
+  document.getElementById('popover-body').innerHTML = `
+    <div class="gp-field"><label>Recolor this ${escapeHtml(rr.kind)} layer by its shading value</label></div>
+    <div class="gp-row">
+      <div class="gp-field"><label>Low Color</label><input type="color" id="raster-sym-min" value="${rr.minColor}"></div>
+      <div class="gp-field"><label>High Color</label><input type="color" id="raster-sym-max" value="${rr.maxColor}"></div>
+    </div>
+    <div class="grad-preview" id="raster-sym-preview" style="background:linear-gradient(to right,${rr.minColor},${rr.maxColor})"></div>
+    <button class="btn" id="raster-sym-reset" style="width:100%;margin-top:8px;">Reset to Grayscale</button>
+    <button class="btn primary" id="raster-sym-apply" style="width:100%;margin-top:8px;">Apply</button>
+  `;
+  showPopover();
+
+  const updatePreview = () => {
+    const min = document.getElementById('raster-sym-min').value;
+    const max = document.getElementById('raster-sym-max').value;
+    document.getElementById('raster-sym-preview').style.background = `linear-gradient(to right,${min},${max})`;
+  };
+  document.getElementById('raster-sym-min').addEventListener('input', updatePreview);
+  document.getElementById('raster-sym-max').addEventListener('input', updatePreview);
+  document.getElementById('raster-sym-reset').addEventListener('click', () => {
+    document.getElementById('raster-sym-min').value = '#000000';
+    document.getElementById('raster-sym-max').value = '#ffffff';
+    updatePreview();
+  });
+  document.getElementById('raster-sym-apply').addEventListener('click', () => {
+    recolorRasterLayer(lyr, document.getElementById('raster-sym-min').value, document.getElementById('raster-sym-max').value);
+    closePopover();
+  });
+}
+
 function openSymbologyPopover(id){
   const lyr = layers[id];
+  if(!lyr.effects){
+    lyr.effects = { shadowEnabled: false, shadowColor: '#000000', shadowBlur: 4, shadowOffsetX: 2, shadowOffsetY: 2,
+      glowEnabled: false, glowColor: '#3da7e0', glowBlur: 6 };
+  }
   const geomTypes = lyr.allFeatures.map(l => l.feature && l.feature.geometry && l.feature.geometry.type).filter(Boolean);
   const hasPoint = geomTypes.some(t => t === 'Point' || t === 'MultiPoint');
   const sample = (lyr.allFeatures[0]?.feature?.properties) || {};
@@ -700,6 +830,30 @@ function openSymbologyPopover(id){
         </div>
       </div>
     </div>` : ''}
+
+    <div class="gp-field" style="margin-top:14px;border-top:1px solid var(--border);padding-top:10px;">
+      <label style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;">Effects <span style="color:var(--text-faint);font-weight:400;text-transform:none;letter-spacing:normal;">(applies no matter which mode above is active)</span></label>
+    </div>
+
+    <label style="display:flex;align-items:center;gap:6px;font-weight:normal;font-size:12px;color:var(--text-dim);margin-bottom:6px;">
+      <input type="checkbox" id="eff-shadow-on" ${lyr.effects.shadowEnabled ? 'checked' : ''}> Drop Shadow
+    </label>
+    <div class="gp-row">
+      <div class="gp-field"><label>Shadow Color</label><input type="color" id="eff-shadow-color" value="${lyr.effects.shadowColor}"></div>
+      <div class="gp-field"><label>Blur</label><input type="number" id="eff-shadow-blur" min="0" max="30" value="${lyr.effects.shadowBlur}"></div>
+    </div>
+    <div class="gp-row">
+      <div class="gp-field"><label>Offset X</label><input type="number" id="eff-shadow-x" min="-30" max="30" value="${lyr.effects.shadowOffsetX}"></div>
+      <div class="gp-field"><label>Offset Y</label><input type="number" id="eff-shadow-y" min="-30" max="30" value="${lyr.effects.shadowOffsetY}"></div>
+    </div>
+
+    <label style="display:flex;align-items:center;gap:6px;font-weight:normal;font-size:12px;color:var(--text-dim);margin:10px 0 6px;">
+      <input type="checkbox" id="eff-glow-on" ${lyr.effects.glowEnabled ? 'checked' : ''}> Outer Glow
+    </label>
+    <div class="gp-row">
+      <div class="gp-field"><label>Glow Color</label><input type="color" id="eff-glow-color" value="${lyr.effects.glowColor}"></div>
+      <div class="gp-field"><label>Glow Blur</label><input type="number" id="eff-glow-blur" min="0" max="30" value="${lyr.effects.glowBlur}"></div>
+    </div>
 
     <button class="btn primary" id="sym-apply" style="width:100%;margin-top:10px;">Apply</button>
   `;
@@ -840,9 +994,20 @@ function openSymbologyPopover(id){
       lyr.symbologyConfig.heatMaxColor = document.getElementById('heat-color-high').value;
     }
 
+    lyr.effects.shadowEnabled = document.getElementById('eff-shadow-on').checked;
+    lyr.effects.shadowColor   = document.getElementById('eff-shadow-color').value;
+    lyr.effects.shadowBlur    = parseFloat(document.getElementById('eff-shadow-blur').value) || 0;
+    lyr.effects.shadowOffsetX = parseFloat(document.getElementById('eff-shadow-x').value) || 0;
+    lyr.effects.shadowOffsetY = parseFloat(document.getElementById('eff-shadow-y').value) || 0;
+    lyr.effects.glowEnabled   = document.getElementById('eff-glow-on').checked;
+    lyr.effects.glowColor     = document.getElementById('eff-glow-color').value;
+    lyr.effects.glowBlur      = parseFloat(document.getElementById('eff-glow-blur').value) || 0;
+
     applyThematicStyle(lyr);
     renderLayerList();
-    closePopover();
+    // Deliberately left open — Symbology is the one dialog you typically want
+    // to keep tweaking (colors, ramps, effects) and see the result live,
+    // rather than reopening it after every change. Close it with the × when done.
   });
 }
 
@@ -1091,14 +1256,13 @@ function openLabelDialog(id){
   });
 }
 
-function applyLabels(id){
-  const lyr = layers[id];
-  lyr.allFeatures.forEach(l => { if(l.getTooltip && l.getTooltip()) l.unbindTooltip(); });
+const LABEL_MIN_SIZE = 8, LABEL_MAX_SIZE = 48; // matches the Label dialog's Font Size input range
 
-  const h   = lyr.labelHaloColor;
-  const css = [
+function labelCss(lyr, size){
+  const h = lyr.labelHaloColor;
+  return [
     `color:${lyr.labelColor}`,
-    `font-size:${lyr.labelSize}px`,
+    `font-size:${size}px`,
     `font-weight:${lyr.labelBold ? '700' : '400'}`,
     `font-style:${lyr.labelItalic ? 'italic' : 'normal'}`,
     `text-transform:${lyr.labelUppercase ? 'uppercase' : 'none'}`,
@@ -1106,17 +1270,124 @@ function applyLabels(id){
     `font-family:Segoe UI,system-ui,sans-serif`,
     `text-shadow:-1px -1px 2px ${h},1px -1px 2px ${h},-1px 1px 2px ${h},1px 1px 2px ${h},0 0 6px ${h}`
   ].join(';');
+}
+
+function applyLabels(id){
+  const lyr = layers[id];
+  lyr.allFeatures.forEach(l => { if(l.getTooltip && l.getTooltip()) l.unbindTooltip(); });
 
   const dir    = lyr.labelDirection || 'top';
   const offset = dir === 'bottom' ? [0, 8] : [0, -8];
 
   lyr.allFeatures.forEach(l => {
     const val = (l.feature?.properties?.[lyr.labelField]) ?? '';
-    l.bindTooltip(`<span style="${css}">${escapeHtml(String(val))}</span>`, {
-      permanent: true, direction: dir, className: 'feature-label', offset
+    const size = l._labelSize || lyr.labelSize;
+    l.bindTooltip(`<span style="${labelCss(lyr, size)}">${escapeHtml(String(val))}</span>`, {
+      permanent: true, direction: dir, className: 'feature-label', offset, interactive: true
     });
+    // Concentric buffer rings share one centroid, so their default label
+    // anchor (the polygon center) would stack every ring's label on top of
+    // each other. If this feature has a precomputed anchor further out
+    // (see attachRingLabelAnchors) — or the user has already dragged this
+    // label once before — open the tooltip there instead.
+    if(l._labelAnchor) l.openTooltip(l._labelAnchor);
+    wireLabelDrag(l, lyr);
   });
   lyr.labelsOn = true;
+}
+
+// ---------- Feature labels: drag to reposition ----------
+// Labels are Leaflet tooltips, not markers, so they don't get draggability
+// for free — this wires a plain mousedown/mousemove/mouseup drag onto the
+// tooltip's own DOM element, then pins the result via the same _labelAnchor
+// mechanism attachRingLabelAnchors() uses, so a dragged position sticks
+// across re-styling (font/color changes just rebind the tooltip) and stays
+// geographically anchored on pan/zoom. Double-click resets to the default
+// (feature-centroid) position.
+// { l, startX, startY, moved } while a mouse button is down on a label —
+// "moved" only flips true once the pointer has actually traveled past a
+// small threshold, so a plain click or the two clicks of a double-click
+// (used to reset a label) don't get misread as a drag.
+let _labelDrag = null;
+const LABEL_DRAG_THRESHOLD = 4; // px
+
+function wireLabelDrag(l, lyr){
+  const tooltip = l.getTooltip();
+  const el = tooltip && tooltip.getElement();
+  if(!el) return;
+  el.addEventListener('mousedown', e => {
+    e.stopPropagation();
+    e.preventDefault();
+    _labelDrag = { l, startX: e.clientX, startY: e.clientY, moved: false };
+  });
+  el.addEventListener('dblclick', e => {
+    e.stopPropagation();
+    e.preventDefault();
+    delete l._labelAnchor;
+    delete l._labelSize;
+    const span = el.querySelector('span');
+    if(span) span.style.fontSize = lyr.labelSize + 'px';
+    l.closeTooltip();
+    l.openTooltip();
+  });
+  // Scroll over a label to resize just that one label, independent of the
+  // layer's shared Font Size setting — stopPropagation keeps this from also
+  // zooming the map underneath.
+  el.addEventListener('wheel', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    const current = l._labelSize || lyr.labelSize;
+    const next = Math.max(LABEL_MIN_SIZE, Math.min(LABEL_MAX_SIZE, current + (e.deltaY < 0 ? 1 : -1)));
+    l._labelSize = next;
+    const span = el.querySelector('span');
+    if(span) span.style.fontSize = next + 'px';
+  }, { passive: false });
+}
+
+function labelDragLatLng(e){
+  const rect = map.getContainer().getBoundingClientRect();
+  return map.containerPointToLatLng(L.point(e.clientX - rect.left, e.clientY - rect.top));
+}
+
+document.addEventListener('mousemove', e => {
+  if(!_labelDrag) return;
+  if(!_labelDrag.moved){
+    const dx = e.clientX - _labelDrag.startX, dy = e.clientY - _labelDrag.startY;
+    if(Math.hypot(dx, dy) < LABEL_DRAG_THRESHOLD) return;
+    _labelDrag.moved = true;
+    map.dragging.disable();
+    const el = _labelDrag.l.getTooltip() && _labelDrag.l.getTooltip().getElement();
+    if(el) el.classList.add('label-dragging');
+  }
+  _labelDrag.l.openTooltip(labelDragLatLng(e));
+});
+
+document.addEventListener('mouseup', e => {
+  if(!_labelDrag) return;
+  const { l, moved } = _labelDrag;
+  if(moved){
+    l._labelAnchor = labelDragLatLng(e);
+    const tooltipEl = l.getTooltip() && l.getTooltip().getElement();
+    if(tooltipEl) tooltipEl.classList.remove('label-dragging');
+    map.dragging.enable();
+  }
+  _labelDrag = null;
+});
+
+// Gives each ring of a multi-distance Buffer output its own label anchor —
+// the ring's own centroid pushed out along its DISTANCE, due north — so
+// labels fan out instead of overlapping at the shared buffer center.
+function attachRingLabelAnchors(lyr, units){
+  lyr.allFeatures.forEach(l => {
+    const dist = l.feature?.properties?.DISTANCE;
+    if(dist == null) return;
+    try{
+      const centroid = turf.centroid(l.feature);
+      const labelPt = turf.destination(centroid, dist, 0, { units });
+      const [lon, lat] = labelPt.geometry.coordinates;
+      l._labelAnchor = L.latLng(lat, lon);
+    }catch(e){}
+  });
 }
 
 // ---------- Export a single layer ----------
@@ -1626,7 +1897,7 @@ function updateSelectionStatus(){
 }
 
 // ---------- GeoJSON import / generic layer creation ----------
-function loadGeoJSON(name, geojson, forcedColor){
+function loadGeoJSON(name, geojson, forcedColor, forcedId){
   const color = forcedColor || randomColor();
   const gjLayer = L.geoJSON(geojson, {
     style: { color: color, weight: 2, fillOpacity: 0.3 },
@@ -1637,7 +1908,7 @@ function loadGeoJSON(name, geojson, forcedColor){
       bindIdentify(layer);
     }
   });
-  const id = addLayerToRegistry(name, gjLayer, color, 'geojson');
+  const id = addLayerToRegistry(name, gjLayer, color, 'geojson', forcedId);
   refreshLayerPopups(layers[id]);
   try { map.fitBounds(gjLayer.getBounds(), { maxZoom: 15 }); } catch(e){}
   refreshTable();
@@ -1711,21 +1982,208 @@ async function loadGeoRasterLibs(){
   return _geoRasterLibs;
 }
 
-async function openGeoTiffFile(file){
+// Renders a single-band raster (e.g. a DEM) as grayscale, stretched across
+// its real min/max (which georaster already computes excluding NoData), and
+// returns undefined — georaster-layer-for-leaflet's own convention for "skip
+// this pixel" — for NoData so it comes out transparent instead of opaque.
+function singleBandColorFn(georaster){
+  const noData = georaster.noDataValue;
+  const min = georaster.mins && georaster.mins[0];
+  const max = georaster.maxs && georaster.maxs[0];
+  const range = (min != null && max != null && max > min) ? (max - min) : null;
+  return function(values){
+    const v = values[0];
+    if(v === undefined || v === null || v === noData || Number.isNaN(v)) return;
+    if(range == null) return `rgb(${v},${v},${v})`;
+    const gray = Math.round(255 * Math.max(0, Math.min(1, (v - min) / range)));
+    return `rgb(${gray},${gray},${gray})`;
+  };
+}
+
+async function openGeoTiffFile(file, forcedId){
   try{
     const { parseGeoraster, GeoRasterLayer } = await loadGeoRasterLibs();
-    const arrayBuffer = await file.arrayBuffer();
-    const georaster = await parseGeoraster(arrayBuffer);
-    const rasterLayer = new GeoRasterLayer({ georaster, opacity: 1, resolution: 256 });
+    // Pass the File/Blob straight through instead of pre-reading it with
+    // file.arrayBuffer(): georaster then reads it lazily in chunks via
+    // GeoTIFF.fromBlob, rather than pulling a large file entirely into
+    // memory in one go — which is what actually trips the browser's
+    // generic (and misleadingly-worded) "permission" read error on big
+    // country-scale rasters, not an actual filesystem permission problem.
+    const georaster = await parseGeoraster(file);
+    const layerOptions = { georaster, opacity: 1, resolution: 256 };
+    // georaster-layer-for-leaflet only auto-installs a NoData-aware color
+    // function for rasters it loads from a URL; local File/Blob rasters
+    // (everything Add Data loads) fall back to painting NoData as an opaque
+    // color instead of transparent — which shows up as a big solid
+    // rectangle around any raster that doesn't fill its bounding box. That's
+    // the norm for real-world clipped DEMs (elevation outside a country's
+    // border is NoData, not zero), so supply our own single-band renderer
+    // that treats NoData as transparent and stretches real values to gray.
+    if(georaster.numberOfRasters === 1){
+      layerOptions.pixelValuesToColorFn = singleBandColorFn(georaster);
+    }
+    const rasterLayer = new GeoRasterLayer(layerOptions);
     const name = file.name.replace(/\.tiff?$/i, '');
-    const id = addLayerToRegistry(name, rasterLayer, null, 'raster');
+    const id = addLayerToRegistry(name, rasterLayer, null, 'raster', forcedId);
+    // Keep the original file around (it's just a Blob) so autosave can
+    // re-persist and re-parse this exact raster on the next browser session.
+    layers[id]._sourceFileBlob = file;
+    layers[id]._sourceFileName = file.name;
     try { map.fitBounds(rasterLayer.getBounds()); } catch(e){}
     renderLayerList();
     return id;
   }catch(err){
     console.error('GeoTIFF parse error:', err);
-    alert('Could not read that GeoTIFF: ' + (err && err.message ? err.message : err) + '\n\n(See the browser console for full details.)');
+    const rawMsg = (err && err.message) ? err.message : String(err);
+    const looksLikeReadError = /permission|NotReadable|could not read/i.test(rawMsg);
+    const hint = looksLikeReadError
+      ? 'This is usually NOT a real file-permission problem — it\'s the browser\'s generic wording for "I failed to read this file." Common causes: the file is very large and ran out of memory, it\'s a cloud-sync placeholder (OneDrive/Google Drive) that hasn\'t fully downloaded, or another program (antivirus, etc.) has it locked. Try again, or try a smaller/compressed copy of the file.'
+      : 'See the browser console for full details.';
+    alert(`Could not read that GeoTIFF: ${rawMsg}\n\n${hint}`);
   }
+}
+
+/* ── Raster analysis: Hillshade / Slope / NDVI ───────────────────────
+   All three read the pixel grid straight off the source georaster and
+   render an ImageOverlay positioned at the same bounds Leaflet already
+   draws the source raster at (rasterLayer.getBounds()), so no manual
+   reprojection is needed regardless of the source's original CRS.     */
+
+// Approximate meters-per-pixel. Geographic (degree) rasters are converted
+// using the raster's mid-latitude; projected rasters are assumed to already
+// be in meters (true for UTM and most local projected CRSes).
+function rasterCellSizeMeters(gr){
+  const isGeographic = gr.projection === 4326 || (Math.abs(gr.pixelWidth) < 1 && Math.abs(gr.pixelHeight) < 1);
+  if(isGeographic){
+    const midLat = (gr.ymin + gr.ymax) / 2;
+    const mPerDegLat = 111320;
+    const mPerDegLon = 111320 * Math.cos(midLat * Math.PI / 180);
+    return { dx: Math.abs(gr.pixelWidth) * mPerDegLon, dy: Math.abs(gr.pixelHeight) * mPerDegLat };
+  }
+  return { dx: Math.abs(gr.pixelWidth), dy: Math.abs(gr.pixelHeight) };
+}
+
+// Horn's method 3x3 kernel — same formula GDAL/ArcGIS use for slope & hillshade.
+function computeElevationGradients(band, width, height, dx, dy, noDataValue){
+  const dzdx = new Float32Array(width * height);
+  const dzdy = new Float32Array(width * height);
+  const valid = new Uint8Array(width * height);
+  const at = (r, c) => {
+    r = r < 0 ? 0 : (r >= height ? height - 1 : r);
+    c = c < 0 ? 0 : (c >= width ? width - 1 : c);
+    const v = band[r][c];
+    return (v == null || v === noDataValue || Number.isNaN(v)) ? null : v;
+  };
+  for(let r = 0; r < height; r++){
+    for(let c = 0; c < width; c++){
+      const a = at(r-1,c-1), b = at(r-1,c), cc = at(r-1,c+1);
+      const d = at(r,c-1),                  f = at(r,c+1);
+      const g = at(r+1,c-1), h = at(r+1,c), i = at(r+1,c+1);
+      const idx = r * width + c;
+      if(a===null||b===null||cc===null||d===null||f===null||g===null||h===null||i===null){
+        valid[idx] = 0;
+        continue;
+      }
+      dzdx[idx] = ((cc + 2*f + i) - (a + 2*d + g)) / (8 * dx);
+      dzdy[idx] = ((g + 2*h + i) - (a + 2*b + cc)) / (8 * dy);
+      valid[idx] = 1;
+    }
+  }
+  return { dzdx, dzdy, valid };
+}
+
+// Linear color ramp across sorted [value, [r,g,b]] stops.
+function rampColor(stops, t){
+  if(t <= stops[0][0]) return stops[0][1];
+  const last = stops[stops.length - 1];
+  if(t >= last[0]) return last[1];
+  for(let i = 0; i < stops.length - 1; i++){
+    const [v0, c0] = stops[i], [v1, c1] = stops[i+1];
+    if(t >= v0 && t <= v1){
+      const f = (t - v0) / (v1 - v0);
+      return [c0[0]+(c1[0]-c0[0])*f, c0[1]+(c1[1]-c0[1])*f, c0[2]+(c1[2]-c0[2])*f];
+    }
+  }
+  return last[1];
+}
+
+function buildHillshadeOverlay(gr, azimuthDeg, altitudeDeg, zFactor){
+  const band = gr.values[0];
+  const { width, height, noDataValue } = gr;
+  const { dx, dy } = rasterCellSizeMeters(gr);
+  const { dzdx, dzdy, valid } = computeElevationGradients(band, width, height, dx, dy, noDataValue);
+  const azRad = (360 - azimuthDeg + 90) * Math.PI / 180;
+  const zenithRad = (90 - altitudeDeg) * Math.PI / 180;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width; canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(width, height);
+  for(let idx = 0; idx < width * height; idx++){
+    const p = idx * 4;
+    if(!valid[idx]){ img.data[p+3] = 0; continue; }
+    const slopeRad = Math.atan(zFactor * Math.hypot(dzdx[idx], dzdy[idx]));
+    const aspectRad = Math.atan2(dzdy[idx], -dzdx[idx]);
+    let hs = Math.cos(zenithRad) * Math.cos(slopeRad) + Math.sin(zenithRad) * Math.sin(slopeRad) * Math.cos(azRad - aspectRad);
+    hs = Math.max(0, hs) * 255;
+    const v = Math.round(hs);
+    img.data[p] = v; img.data[p+1] = v; img.data[p+2] = v; img.data[p+3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  // Keep the raw grayscale+alpha alongside the canvas so Symbology can
+  // recolor later by re-mapping gray -> a chosen ramp, without redoing the
+  // hillshade math from scratch every time the user picks new colors.
+  return { canvas, grayscale: img.data.slice() };
+}
+
+function buildSlopeOverlay(gr, zFactor){
+  const band = gr.values[0];
+  const { width, height, noDataValue } = gr;
+  const { dx, dy } = rasterCellSizeMeters(gr);
+  const { dzdx, dzdy, valid } = computeElevationGradients(band, width, height, dx, dy, noDataValue);
+  const stops = [[0,[46,204,113]], [15,[241,196,15]], [35,[230,126,34]], [60,[231,76,60]]]; // green -> yellow -> orange -> red, in degrees
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width; canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(width, height);
+  for(let idx = 0; idx < width * height; idx++){
+    const p = idx * 4;
+    if(!valid[idx]){ img.data[p+3] = 0; continue; }
+    const slopeRad = Math.atan(zFactor * Math.hypot(dzdx[idx], dzdy[idx]));
+    const deg = slopeRad * 180 / Math.PI;
+    const [r,g,b] = rampColor(stops, deg);
+    img.data[p] = Math.round(r); img.data[p+1] = Math.round(g); img.data[p+2] = Math.round(b); img.data[p+3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  return canvas;
+}
+
+function buildNdviOverlay(gr, redBandIdx, nirBandIdx){
+  const redBand = gr.values[redBandIdx];
+  const nirBand = gr.values[nirBandIdx];
+  const { width, height, noDataValue } = gr;
+  const stops = [[-1,[120,90,60]], [0,[210,180,120]], [0.2,[255,255,150]], [0.5,[120,200,80]], [1,[10,90,10]]]; // bare/water -> soil -> sparse -> healthy vegetation
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width; canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(width, height);
+  for(let r = 0; r < height; r++){
+    for(let c = 0; c < width; c++){
+      const idx = r * width + c;
+      const p = idx * 4;
+      const red = redBand[r][c], nir = nirBand[r][c];
+      const noData = (red == null || nir == null || red === noDataValue || nir === noDataValue || Number.isNaN(red) || Number.isNaN(nir));
+      const denom = nir + red;
+      if(noData || denom === 0){ img.data[p+3] = 0; continue; }
+      const ndvi = (nir - red) / denom;
+      const [rr,gg,bb] = rampColor(stops, ndvi);
+      img.data[p] = Math.round(rr); img.data[p+1] = Math.round(gg); img.data[p+2] = Math.round(bb); img.data[p+3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return canvas;
 }
 
 // Parses a Shapefile using shpjs (https://github.com/calvinmetcalf/shapefile-js), loaded via CDN.
@@ -2103,7 +2561,7 @@ function renderCatalogBookmarks(){
 
 // ---------- Geoprocessing ----------
 const GP_TOOLS = {
-  buffer:      { title: 'Buffer', fields: ['a','num','unit'], aLabel: 'Input Features', desc: 'Creates buffer polygons around input features out to a specified distance.' },
+  buffer:      { title: 'Buffer', fields: ['a','multidist','unit','ringoutput'], aLabel: 'Input Features', desc: 'Creates buffer polygons around input features. Enter up to three distances to get multiple buffer rings, each tagged with a DISTANCE attribute.' },
   clip:        { title: 'Clip', fields: ['a','b'], aLabel: 'Input Features', bLabel: 'Clip Features', desc: 'Extracts the portions of the input features that fall within the clip features.' },
   erase:       { title: 'Erase', fields: ['a','b'], aLabel: 'Input Features', bLabel: 'Erase Features', desc: 'Removes portions of the input features that overlap the erase features. Opposite of Clip.' },
   intersect:   { title: 'Intersect', fields: ['a','b'], aLabel: 'Input Layer', bLabel: 'Overlay Layer', desc: 'Computes the geometric intersection of two polygon layers.' },
@@ -2117,10 +2575,55 @@ const GP_TOOLS = {
   near:        { title: 'Near', fields: ['a','b'], aLabel: 'Input Features', bLabel: 'Near Features', desc: 'Calculates the distance from each input feature to the nearest feature in another layer, adding NEAR_DIST and NEAR_FID attributes.' },
   exportkml:   { title: 'Export to KML/KMZ', fields: ['a','kmlformat'], aLabel: 'Input Layer', desc: 'Converts the selected layer\'s features to KML for Google Earth or any other KML-compatible viewer.' },
   importgdb:   { title: 'GDB to GPKG', fields: ['gdbfolder'], desc: 'Converts a real ESRI File Geodatabase (.gdb folder) into a standalone GeoPackage (.gpkg). Browsers can\'t read the .gdb format natively, so this loads GDAL compiled to WebAssembly on first use (~30MB, one-time) to do the conversion entirely on your machine — nothing is uploaded anywhere. The result downloads automatically and loads into Catalog.' },
+  hillshade:   { title: 'Hillshade', fields: ['raster','hillshadeparams'], aLabel: 'Elevation Raster', desc: 'Computes shaded relief from an elevation raster\'s first band, given a sun azimuth and altitude.' },
+  slope:       { title: 'Slope', fields: ['raster','slopeparams'], aLabel: 'Elevation Raster', desc: 'Computes slope steepness (in degrees) at each cell of an elevation raster\'s first band.' },
+  ndvi:        { title: 'NDVI', fields: ['raster','ndviparams'], aLabel: 'Multiband Raster', desc: 'Computes the Normalized Difference Vegetation Index from a multiband raster\'s Red and Near-Infrared bands: (NIR-Red)/(NIR+Red).' },
+  routeanalysis: { title: 'Route Analysis', fields: ['linelayer','reflayers','snaptol'], aLabel: 'Route (Line) Layer', desc: 'Splits a route line everywhere it crosses the checked reference layers. Segments inside a reference polygon are tagged "Intersecting {layer}" (combined if more than one overlaps); reference lines and points only add split points and don\'t tag a segment on their own. Each segment also gets LENGTH_M and LENGTH_MI attributes.' },
 };
 
 function layerOptionsHtml(){
   return Object.entries(layers).map(([id, lyr]) => `<option value="${id}">${escapeHtml(lyr.name)}</option>`).join('');
+}
+
+function lineLayerOptionsHtml(){
+  return Object.entries(layers)
+    .filter(([, lyr]) => lyr.allFeatures.some(l => {
+      const t = l.feature && l.feature.geometry && l.feature.geometry.type;
+      return t === 'LineString' || t === 'MultiLineString';
+    }))
+    .map(([id, lyr]) => `<option value="${id}">${escapeHtml(lyr.name)}</option>`).join('');
+}
+
+function refreshRouteRefLayerChecklist(excludeId){
+  const container = document.getElementById('gp-ref-layers');
+  if(!container) return;
+  const items = Object.entries(layers).filter(([id]) => id !== excludeId);
+  if(items.length === 0){
+    container.innerHTML = '<span style="font-size:11px;color:var(--text-faint);">No other layers to reference.</span>';
+    return;
+  }
+  container.innerHTML = items.map(([id, lyr]) =>
+    `<label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:normal;color:var(--text-dim);">
+      <input type="checkbox" class="gp-ref-layer-chk" value="${id}"> ${escapeHtml(lyr.name)}
+    </label>`
+  ).join('');
+}
+
+// georaster-layer-for-leaflet keeps the parsed georaster(s) as `.georasters`
+// (an array, to support stacking); fall back to a singular `.georaster` in
+// case a future/older version of the library exposes it that way instead.
+function getLayerGeoraster(lyr){
+  const ll = lyr && lyr.leafletLayer;
+  if(!ll) return null;
+  if(ll.georaster) return ll.georaster;
+  if(ll.georasters && ll.georasters.length) return ll.georasters[0];
+  return null;
+}
+
+function rasterLayerOptionsHtml(){
+  return Object.entries(layers)
+    .filter(([, lyr]) => lyr.type === 'raster' && getLayerGeoraster(lyr))
+    .map(([id, lyr]) => `<option value="${id}">${escapeHtml(lyr.name)}</option>`).join('');
 }
 
 const gpHistory = [];
@@ -2215,16 +2718,31 @@ function openGPTool(tool){
       <label class="gp-use-sel-label"><input type="checkbox" id="gp-use-b"> Use selection only</label>
     </div>`;
   }
-  if(cfg.fields.includes('num')){
-    html += `<div class="gp-row">
-      <div class="gp-field"><label>Distance</label><input id="gp-num" type="number" value="500" min="0" step="any"></div>
-      <div class="gp-field"><label>Units</label>
-        <select id="gp-unit">
-          <option value="meters">Meters</option>
-          <option value="kilometers">Kilometers</option>
-          <option value="feet">Feet</option>
-          <option value="miles">Miles</option>
-        </select>
+  if(cfg.fields.includes('multidist')){
+    html += `<div class="gp-field"><label>Distances (leave a ring blank to skip it)</label></div>
+    <div class="gp-field"><label>Buffer 1</label><input id="gp-dist-1" type="number" value="500" min="0" step="any"></div>
+    <div class="gp-field"><label>Buffer 2</label><input id="gp-dist-2" type="number" placeholder="—" min="0" step="any"></div>
+    <div class="gp-field"><label>Buffer 3</label><input id="gp-dist-3" type="number" placeholder="—" min="0" step="any"></div>`;
+  }
+  if(cfg.fields.includes('unit')){
+    html += `<div class="gp-field"><label>Units</label>
+      <select id="gp-unit">
+        <option value="meters">Meters</option>
+        <option value="kilometers">Kilometers</option>
+        <option value="feet">Feet</option>
+        <option value="miles">Miles</option>
+      </select>
+    </div>`;
+  }
+  if(cfg.fields.includes('ringoutput')){
+    html += `<div class="gp-field"><label>Multiple Rings Output</label>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:2px;">
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:normal;color:var(--text-dim);">
+          <input type="radio" name="gp-ring-output" value="combined" checked> One layer, colored by ring
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:normal;color:var(--text-dim);">
+          <input type="radio" name="gp-ring-output" value="separate"> Separate layer per ring (toggle individually)
+        </label>
       </div>
     </div>`;
   }
@@ -2258,6 +2776,59 @@ function openGPTool(tool){
       <span id="gp-gdb-picked" style="font-size:11px;color:var(--text-faint);margin-top:4px;"></span>
     </div>`;
   }
+  if(cfg.fields.includes('raster')){
+    const ropts = rasterLayerOptionsHtml();
+    html += `<div class="gp-field">
+      <label>${cfg.aLabel}</label>
+      <select id="gp-sel-a">${ropts || '<option value="">No GeoTIFF raster layers loaded</option>'}</select>
+    </div>`;
+  }
+  if(cfg.fields.includes('hillshadeparams')){
+    html += `<div class="gp-row">
+      <div class="gp-field"><label>Azimuth (°)</label><input id="gp-hs-azimuth" type="number" value="315" min="0" max="360" step="1"></div>
+      <div class="gp-field"><label>Altitude (°)</label><input id="gp-hs-altitude" type="number" value="45" min="0" max="90" step="1"></div>
+    </div>
+    <div class="gp-field"><label>Z-factor</label><input id="gp-hs-zfactor" type="number" value="1" min="0.01" step="0.1"></div>`;
+  }
+  if(cfg.fields.includes('slopeparams')){
+    html += `<div class="gp-field"><label>Z-factor</label><input id="gp-slope-zfactor" type="number" value="1" min="0.01" step="0.1"></div>
+    <span style="font-size:10px;color:var(--text-faint);">Increase Z-factor if elevation units differ from the raster's horizontal units (e.g. feet vs. meters).</span>`;
+  }
+  if(cfg.fields.includes('ndviparams')){
+    html += `<div class="gp-row">
+      <div class="gp-field"><label>Red Band #</label><input id="gp-ndvi-red" type="number" value="1" min="1" step="1"></div>
+      <div class="gp-field"><label>NIR Band #</label><input id="gp-ndvi-nir" type="number" value="4" min="1" step="1"></div>
+    </div>
+    <span style="font-size:10px;color:var(--text-faint);">Band numbers are 1-based. Common 4-band drone/satellite order is Red=1, Green=2, Blue=3, NIR=4 — check your source if colors look inverted.</span>`;
+  }
+  if(cfg.fields.includes('linelayer')){
+    const lineOpts = lineLayerOptionsHtml();
+    html += `<div class="gp-field">
+      <label>${cfg.aLabel}</label>
+      <select id="gp-sel-a">${lineOpts || '<option value="">No line layers loaded</option>'}</select>
+      <label class="gp-use-sel-label"><input type="checkbox" id="gp-use-a"> Use selection only</label>
+    </div>`;
+  }
+  if(cfg.fields.includes('reflayers')){
+    html += `<div class="gp-field">
+      <label>Reference Layers (check the ones to test against)</label>
+      <div id="gp-ref-layers" style="max-height:160px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;border:1px solid var(--border);border-radius:4px;padding:6px;"></div>
+    </div>`;
+  }
+  if(cfg.fields.includes('snaptol')){
+    html += `<div class="gp-row">
+      <div class="gp-field"><label>Point Snap Tolerance</label><input id="gp-snap-tol" type="number" value="10" min="0" step="any"></div>
+      <div class="gp-field"><label>Units</label>
+        <select id="gp-snap-unit">
+          <option value="meters">Meters</option>
+          <option value="kilometers">Kilometers</option>
+          <option value="feet">Feet</option>
+          <option value="miles">Miles</option>
+        </select>
+      </div>
+    </div>
+    <span style="font-size:10px;color:var(--text-faint);">How close a point reference feature must be to the route to count as a crossing (split) point. Only affects point reference layers.</span>`;
+  }
 
   html += `<button class="btn primary" id="gp-run" style="width:100%;margin-top:8px;">▶ Run</button>`;
   html += `<div id="gp-progress"><div id="gp-progress-bar"></div></div>`;
@@ -2272,6 +2843,11 @@ function openGPTool(tool){
   document.getElementById('gp-run').addEventListener('click', () => runGPTool(tool));
   if(cfg.fields.includes('gdbfolder')){
     document.getElementById('gp-gdb-pick').addEventListener('click', () => pickGdbFolder());
+  }
+  if(cfg.fields.includes('reflayers')){
+    const selA = document.getElementById('gp-sel-a');
+    refreshRouteRefLayerChecklist(selA ? selA.value : null);
+    if(selA) selA.addEventListener('change', () => refreshRouteRefLayerChecklist(selA.value));
   }
 }
 
@@ -2592,15 +3168,51 @@ async function runGPTool(tool){
     if(selB && !layerB){ showGPResult('Select a second layer first.', true, title); return; }
 
     if(tool === 'buffer'){
-      const dist = parseFloat(document.getElementById('gp-num').value);
       const units = document.getElementById('gp-unit').value;
-      if(isNaN(dist) || dist <= 0){ showGPResult('Enter a distance greater than 0.', true, title); return; }
+      const rawDists = [1,2,3].map(n => document.getElementById(`gp-dist-${n}`).value.trim());
+      const parsedDists = rawDists.map(v => v === '' ? null : parseFloat(v));
+      if(parsedDists[0] == null || isNaN(parsedDists[0])){ showGPResult('Enter at least a first buffer distance.', true, title); return; }
+      if(parsedDists.some(d => d != null && (isNaN(d) || d <= 0))){ showGPResult('Buffer distances must be greater than 0.', true, title); return; }
       const useSelA = document.getElementById('gp-use-a')?.checked;
       const feats = useSelA ? getSelectedFeaturesForLayer(layerA) : getFeaturesArray(layerA);
       if(feats.length === 0){ showGPResult(layerA.name + ' has no features.', true, title); return; }
-      const buffered = feats.map(f => turf.buffer(f, dist, { units })).filter(Boolean);
-      loadGeoJSON(`Buffer of ${layerA.name}`, turf.featureCollection(buffered), '#5ec98f');
-      showGPResult(`Buffer complete — ${buffered.length} feature(s) created.`, false, title);
+      // Largest ring first so smaller (fully-contained) rings draw on top of it.
+      const distances = parsedDists.filter(d => d != null).sort((a, b) => b - a);
+      const pal = QUAL_PALETTES['Tableau'];
+      const bufferOneRing = dist => feats.map(f => {
+        const b = turf.buffer(f, dist, { units });
+        return b ? turf.feature(b.geometry, Object.assign({}, f.properties || {}, { DISTANCE: dist })) : null;
+      }).filter(Boolean);
+      const separateLayers = distances.length > 1
+        && document.querySelector('input[name="gp-ring-output"]:checked')?.value === 'separate';
+
+      let totalCount = 0;
+      if(separateLayers){
+        distances.forEach((dist, i) => {
+          const ringFeats = bufferOneRing(dist);
+          totalCount += ringFeats.length;
+          const ringLyrId = loadGeoJSON(`Buffer of ${layerA.name} (${dist} ${units})`, turf.featureCollection(ringFeats), pal[i % pal.length]);
+          attachRingLabelAnchors(layers[ringLyrId], units);
+        });
+      } else {
+        const buffered = distances.flatMap(bufferOneRing);
+        totalCount = buffered.length;
+        const bufferLyrId = loadGeoJSON(`Buffer of ${layerA.name}`, turf.featureCollection(buffered), '#5ec98f');
+        const bufferLyr = layers[bufferLyrId];
+        attachRingLabelAnchors(bufferLyr, units);
+        if(distances.length > 1){
+          // Multiple rings: color each DISTANCE value differently by default so
+          // the rings read as distinct zones instead of one flat overlapping fill.
+          distances.forEach((d, i) => { bufferLyr.symbologyConfig.uniqueColors[String(d)] = pal[i % pal.length]; });
+          bufferLyr.symbologyMode = 'unique';
+          bufferLyr.symbologyConfig.field = 'DISTANCE';
+          applyThematicStyle(bufferLyr);
+          renderLayerList();
+        }
+      }
+      const ringWord = distances.length === 1 ? 'distance' : 'distances';
+      const layoutWord = separateLayers ? `${distances.length} separate layers` : 'one layer';
+      showGPResult(`Buffer complete — ${totalCount} feature(s) created across ${distances.length} ${ringWord} (${distances.join(', ')} ${units}), as ${layoutWord}.`, false, title);
 
     } else if(tool === 'clip'){
       const clipGeom = dissolveFeatures(getFeaturesArray(layerB));
@@ -2766,6 +3378,169 @@ async function runGPTool(tool){
       };
       const { gdbFolderName, outName } = await convertGdbFolderToGpkg(_pickedGdbFiles, setProgress);
       showGPResult(`Converted "${gdbFolderName}" → ${outName} — downloaded, and loaded into Catalog.`, false, title);
+
+    } else if(tool === 'hillshade'){
+      const gr = getLayerGeoraster(layerA);
+      if(!gr){ showGPResult(layerA.name + ' is not a readable GeoTIFF raster.', true, title); return; }
+      const azimuth = parseFloat(document.getElementById('gp-hs-azimuth').value);
+      const altitude = parseFloat(document.getElementById('gp-hs-altitude').value);
+      const zFactor = parseFloat(document.getElementById('gp-hs-zfactor').value);
+      if(isNaN(azimuth) || isNaN(altitude) || isNaN(zFactor)){ showGPResult('Enter valid azimuth, altitude, and Z-factor values.', true, title); return; }
+      const { canvas, grayscale } = buildHillshadeOverlay(gr, azimuth, altitude, zFactor);
+      const bounds = layerA.leafletLayer.getBounds();
+      const overlay = L.imageOverlay(canvas.toDataURL(), bounds, { opacity: 1 });
+      const hsId = addLayerToRegistry(`${layerA.name} (Hillshade)`, overlay, null, 'raster');
+      layers[hsId].rasterRender = { kind: 'Hillshade', width: canvas.width, height: canvas.height, grayscale, minColor: '#000000', maxColor: '#ffffff' };
+      showGPResult('Hillshade complete.', false, title);
+
+    } else if(tool === 'slope'){
+      const gr = getLayerGeoraster(layerA);
+      if(!gr){ showGPResult(layerA.name + ' is not a readable GeoTIFF raster.', true, title); return; }
+      const zFactor = parseFloat(document.getElementById('gp-slope-zfactor').value);
+      if(isNaN(zFactor) || zFactor <= 0){ showGPResult('Enter a Z-factor greater than 0.', true, title); return; }
+      const canvas = buildSlopeOverlay(gr, zFactor);
+      const bounds = layerA.leafletLayer.getBounds();
+      const overlay = L.imageOverlay(canvas.toDataURL(), bounds, { opacity: 1 });
+      addLayerToRegistry(`${layerA.name} (Slope)`, overlay, null, 'raster');
+      showGPResult('Slope complete — colorized 0° (green) to 60°+ (red).', false, title);
+
+    } else if(tool === 'ndvi'){
+      const gr = getLayerGeoraster(layerA);
+      if(!gr){ showGPResult(layerA.name + ' is not a readable GeoTIFF raster.', true, title); return; }
+      const redBand = parseInt(document.getElementById('gp-ndvi-red').value, 10) - 1;
+      const nirBand = parseInt(document.getElementById('gp-ndvi-nir').value, 10) - 1;
+      const bandCount = gr.numberOfRasterBands || (gr.values ? gr.values.length : 0);
+      if(isNaN(redBand) || isNaN(nirBand) || redBand < 0 || nirBand < 0 || redBand >= bandCount || nirBand >= bandCount){
+        showGPResult(`${layerA.name} only has ${bandCount} band(s) — enter valid band numbers.`, true, title); return;
+      }
+      const canvas = buildNdviOverlay(gr, redBand, nirBand);
+      const bounds = layerA.leafletLayer.getBounds();
+      const overlay = L.imageOverlay(canvas.toDataURL(), bounds, { opacity: 1 });
+      addLayerToRegistry(`${layerA.name} (NDVI)`, overlay, null, 'raster');
+      showGPResult('NDVI complete — colorized bare/water (brown) to healthy vegetation (green).', false, title);
+
+    } else if(tool === 'routeanalysis'){
+      const useSelA = document.getElementById('gp-use-a')?.checked;
+      const routeFeats = (useSelA ? getSelectedFeaturesForLayer(layerA) : getFeaturesArray(layerA))
+        .filter(f => f.geometry && (f.geometry.type === 'LineString' || f.geometry.type === 'MultiLineString'));
+      if(routeFeats.length === 0){ showGPResult(layerA.name + ' has no line features.', true, title); return; }
+
+      const refIds = Array.from(document.querySelectorAll('.gp-ref-layer-chk:checked')).map(cb => cb.value);
+      if(refIds.length === 0){ showGPResult('Check at least one reference layer.', true, title); return; }
+
+      const snapDist = parseFloat(document.getElementById('gp-snap-tol').value) || 0;
+      const snapUnits = document.getElementById('gp-snap-unit').value;
+
+      // Classify each checked reference layer's features by geometry once,
+      // up front — polygons drive the "Intersecting X" label, lines and
+      // points only contribute split points (per the tool's design).
+      const polygonRefs = [], lineRefs = [], pointRefs = [];
+      refIds.forEach(refId => {
+        const refLyr = layers[refId];
+        if(!refLyr) return;
+        const feats = getFeaturesArray(refLyr);
+        const polyFeats = feats.filter(f => f.geometry && (f.geometry.type === 'Polygon' || f.geometry.type === 'MultiPolygon'));
+        const lineFeats = feats.filter(f => f.geometry && (f.geometry.type === 'LineString' || f.geometry.type === 'MultiLineString'));
+        const pointFeats = feats.filter(f => f.geometry && f.geometry.type === 'Point');
+        if(polyFeats.length) polygonRefs.push({ name: refLyr.name, features: polyFeats });
+        if(lineFeats.length) lineRefs.push({ name: refLyr.name, features: lineFeats });
+        if(pointFeats.length) pointRefs.push({ name: refLyr.name, features: pointFeats });
+      });
+
+      const outputFeats = [];
+      routeFeats.forEach(routeFeat => {
+        // Explode MultiLineString routes into individual LineStrings so the
+        // splitting logic below only has to deal with simple lines.
+        const lines = routeFeat.geometry.type === 'MultiLineString'
+          ? routeFeat.geometry.coordinates.map(c => turf.lineString(c, routeFeat.properties))
+          : [routeFeat];
+
+        lines.forEach(line => {
+          const splitPoints = [];
+
+          polygonRefs.forEach(pref => {
+            pref.features.forEach(pf => {
+              try{
+                const boundary = turf.polygonToLine(pf);
+                const boundaryFeats = boundary.type === 'FeatureCollection' ? boundary.features : [boundary];
+                boundaryFeats.forEach(bf => {
+                  const bLines = bf.geometry.type === 'MultiLineString'
+                    ? bf.geometry.coordinates.map(c => turf.lineString(c))
+                    : [bf];
+                  bLines.forEach(bl => {
+                    try{ turf.lineIntersect(line, bl).features.forEach(pt => splitPoints.push(pt)); }catch(e){}
+                  });
+                });
+              }catch(e){}
+            });
+          });
+
+          lineRefs.forEach(lref => {
+            lref.features.forEach(lf => {
+              try{ turf.lineIntersect(line, lf).features.forEach(pt => splitPoints.push(pt)); }catch(e){}
+            });
+          });
+
+          if(snapDist > 0){
+            pointRefs.forEach(pref => {
+              pref.features.forEach(pf => {
+                try{
+                  const dist = turf.pointToLineDistance(pf, line, { units: snapUnits });
+                  if(dist <= snapDist) splitPoints.push(turf.nearestPointOnLine(line, pf));
+                }catch(e){}
+              });
+            });
+          }
+
+          let segments;
+          if(splitPoints.length === 0){
+            segments = [line];
+          } else {
+            try{
+              const splitter = turf.multiPoint(splitPoints.map(pt => pt.geometry.coordinates));
+              const splitFC = turf.lineSplit(line, splitter);
+              segments = splitFC.features.length ? splitFC.features : [line];
+            }catch(e){ segments = [line]; }
+          }
+
+          segments.forEach(seg => {
+            if(!seg.geometry || seg.geometry.coordinates.length < 2) return;
+            const lenKm = turf.length(seg, { units: 'kilometers' });
+            if(lenKm < 0.0001) return; // drop slivers from coincident split points
+            const mid = turf.along(seg, lenKm / 2, { units: 'kilometers' });
+            const matchedNames = [];
+            polygonRefs.forEach(pref => {
+              const inside = pref.features.some(pf => { try{ return turf.booleanPointInPolygon(mid, pf); }catch(e){ return false; } });
+              if(inside && !matchedNames.includes(pref.name)) matchedNames.push(pref.name);
+            });
+            const label = matchedNames.length ? `Intersecting ${matchedNames.join(', ')}` : 'Clear';
+            const lenM = lenKm * 1000;
+            outputFeats.push(turf.feature(seg.geometry, Object.assign({}, line.properties || {}, {
+              CROSSING: label,
+              LENGTH_M: Math.round(lenM * 100) / 100,
+              LENGTH_MI: Math.round((lenM / 1609.344) * 1000) / 1000,
+            })));
+          });
+        });
+      });
+
+      if(outputFeats.length === 0){ showGPResult('No output segments were produced — check your reference layer selections.', true, title); return; }
+
+      const routeLyrId = loadGeoJSON(`${layerA.name} — Route Analysis`, turf.featureCollection(outputFeats), '#9aa3ad');
+      const routeLyr = layers[routeLyrId];
+      const uniqueLabels = [...new Set(outputFeats.map(f => f.properties.CROSSING))];
+      const pal = QUAL_PALETTES['Tableau'];
+      uniqueLabels.filter(l => l !== 'Clear').forEach((label, i) => {
+        routeLyr.symbologyConfig.uniqueColors[label] = pal[i % pal.length];
+      });
+      routeLyr.symbologyConfig.uniqueColors['Clear'] = '#9aa3ad';
+      routeLyr.symbologyMode = 'unique';
+      routeLyr.symbologyConfig.field = 'CROSSING';
+      applyThematicStyle(routeLyr);
+      renderLayerList();
+
+      const categoryWord = uniqueLabels.length === 1 ? 'category' : 'categories';
+      showGPResult(`Route Analysis complete — ${outputFeats.length} segment(s) created across ${uniqueLabels.length} ${categoryWord}.`, false, title);
     }
 
   }catch(err){
@@ -3055,6 +3830,226 @@ document.getElementById('qat-open')?.addEventListener('click', () => document.ge
 renderLayerList();
 renderCatalogBookmarks();
 updateStatusLayers();
+
+/* =========================================================
+   Browser-side autosave (IndexedDB)
+   Persists the whole working session — layers, view, bookmarks —
+   locally so closing the tab/browser doesn't lose anything. A layer
+   only disappears once you explicitly remove it. This is separate
+   from Save Project / Open Project above, which stay as an explicit
+   file-based export/import for sharing or backing up outside the
+   browser.
+   ========================================================= */
+
+const AUTOSAVE_DB_NAME = 'maplite-autosave';
+const AUTOSAVE_DB_VERSION = 1;
+const AUTOSAVE_DEBOUNCE_MS = 1200;
+let _autosaveDb = null;
+
+function openAutosaveDb(){
+  if(_autosaveDb) return Promise.resolve(_autosaveDb);
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(AUTOSAVE_DB_NAME, AUTOSAVE_DB_VERSION);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if(!db.objectStoreNames.contains('layers')) db.createObjectStore('layers', { keyPath: 'id' });
+      if(!db.objectStoreNames.contains('meta')) db.createObjectStore('meta', { keyPath: 'key' });
+    };
+    req.onsuccess = () => { _autosaveDb = req.result; resolve(_autosaveDb); };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+function idbRequest(req){
+  return new Promise((resolve, reject) => {
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function idbGetAll(storeName){
+  const db = await openAutosaveDb();
+  return idbRequest(db.transaction(storeName, 'readonly').objectStore(storeName).getAll());
+}
+
+async function idbPut(storeName, record){
+  const db = await openAutosaveDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, 'readwrite');
+    tx.objectStore(storeName).put(record);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function idbDelete(storeName, key){
+  const db = await openAutosaveDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, 'readwrite');
+    tx.objectStore(storeName).delete(key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function idbClearAndPutAll(storeName, records){
+  const db = await openAutosaveDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, 'readwrite');
+    const store = tx.objectStore(storeName);
+    store.clear();
+    records.forEach(r => store.put(r));
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+function dataUrlToBlob(dataUrl){
+  const [meta, b64] = dataUrl.split(',');
+  const mime = (meta.match(/data:(.*);base64/) || [, 'image/png'])[1];
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for(let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
+}
+
+// Reverses the "FIELD op VALUE" string applyDefinitionQuery() writes to
+// lyr.queryExpr, so a definition query can be reapplied after a restore.
+function parseQueryExpr(expr){
+  const m = String(expr).match(/^(.*?)\s+(!=|>=|<=|=|>|<|contains)\s+(.*)$/);
+  return m ? { field: m[1], op: m[2], value: m[3] } : null;
+}
+
+function scheduleAutosave(){
+  if(_autosaveRestoring) return; // don't resave partial state while startup restore is still running
+  clearTimeout(_autosaveTimer);
+  _autosaveTimer = setTimeout(persistAutosaveState, AUTOSAVE_DEBOUNCE_MS);
+}
+
+async function serializeLayerForAutosave(id, lyr){
+  const base = {
+    id, name: lyr.name, color: lyr.color, type: lyr.type, visible: lyr.visible,
+    opacity: lyr.opacity, weight: lyr.weight, radius: lyr.radius,
+    strokeColor: lyr.strokeColor, fillColor: lyr.fillColor,
+    strokeOpacity: lyr.strokeOpacity, fillOpacity: lyr.fillOpacity, dashArray: lyr.dashArray,
+    symbologyMode: lyr.symbologyMode, symbologyConfig: lyr.symbologyConfig,
+    labelsOn: lyr.labelsOn, labelField: lyr.labelField, labelColor: lyr.labelColor,
+    labelHaloColor: lyr.labelHaloColor, labelSize: lyr.labelSize, labelBold: lyr.labelBold,
+    labelItalic: lyr.labelItalic, labelUppercase: lyr.labelUppercase, labelDirection: lyr.labelDirection,
+    queryExpr: lyr.queryExpr, effects: lyr.effects,
+  };
+
+  if(lyr.type === 'raster'){
+    if(lyr._sourceFileBlob){
+      return { ...base, rasterKind: 'geotiff', fileBlob: lyr._sourceFileBlob, fileName: lyr._sourceFileName || 'raster.tif' };
+    }
+    if(lyr.leafletLayer instanceof L.ImageOverlay){
+      const bounds = lyr.leafletLayer.getBounds();
+      let imageBlob = null;
+      try{ imageBlob = dataUrlToBlob(lyr.leafletLayer._url); }catch(e){}
+      if(!imageBlob) return null;
+      return {
+        ...base, rasterKind: 'imageoverlay', imageBlob,
+        bounds: [[bounds.getSouth(), bounds.getWest()], [bounds.getNorth(), bounds.getEast()]],
+        rasterRender: lyr.rasterRender ? {
+          kind: lyr.rasterRender.kind, width: lyr.rasterRender.width, height: lyr.rasterRender.height,
+          grayscale: lyr.rasterRender.grayscale, minColor: lyr.rasterRender.minColor, maxColor: lyr.rasterRender.maxColor,
+        } : null,
+      };
+    }
+    return null; // unrecognized raster shape — skip rather than risk a broken record
+  }
+
+  return { ...base, geojson: lyr.leafletLayer.toGeoJSON() };
+}
+
+async function persistAutosaveState(){
+  try{
+    const records = (await Promise.all(
+      Object.entries(layers).map(([id, lyr]) => serializeLayerForAutosave(id, lyr))
+    )).filter(Boolean);
+    await idbClearAndPutAll('layers', records);
+    const c = map.getCenter();
+    await idbPut('meta', { key: 'session', view: { center: [c.lat, c.lng], zoom: map.getZoom() }, bookmarks });
+  }catch(e){
+    console.warn('[autosave] failed to persist session:', e);
+  }
+}
+
+async function restoreAutosavedLayer(rec){
+  let id;
+  if(rec.type === 'raster' && rec.rasterKind === 'geotiff' && rec.fileBlob){
+    const file = new File([rec.fileBlob], rec.fileName || 'raster.tif');
+    id = await openGeoTiffFile(file, rec.id);
+  } else if(rec.type === 'raster' && rec.rasterKind === 'imageoverlay' && rec.imageBlob){
+    const url = URL.createObjectURL(rec.imageBlob);
+    const overlay = L.imageOverlay(url, rec.bounds, { opacity: rec.opacity ?? 1 });
+    id = addLayerToRegistry(rec.name, overlay, null, 'raster', rec.id);
+    if(rec.rasterRender) layers[id].rasterRender = rec.rasterRender;
+  } else if(rec.geojson && rec.geojson.features && rec.geojson.features.length > 0){
+    id = loadGeoJSON(rec.name, rec.geojson, rec.color, rec.id);
+  }
+  if(!id || !layers[id]) return;
+
+  const lyr = layers[id];
+  Object.assign(lyr, {
+    opacity: rec.opacity, weight: rec.weight, radius: rec.radius,
+    strokeColor: rec.strokeColor, fillColor: rec.fillColor,
+    strokeOpacity: rec.strokeOpacity, fillOpacity: rec.fillOpacity, dashArray: rec.dashArray,
+    symbologyMode: rec.symbologyMode, symbologyConfig: rec.symbologyConfig,
+    labelField: rec.labelField, labelColor: rec.labelColor,
+    labelHaloColor: rec.labelHaloColor, labelSize: rec.labelSize, labelBold: rec.labelBold,
+    labelItalic: rec.labelItalic, labelUppercase: rec.labelUppercase, labelDirection: rec.labelDirection,
+    effects: rec.effects || lyr.effects,
+  });
+
+  if(lyr.type !== 'raster') applyLayerStyle(lyr);
+  if(lyr.symbologyMode && lyr.symbologyMode !== 'single') applyThematicStyle(lyr);
+  if(rec.labelsOn) applyLabels(id); // sets lyr.labelsOn = true itself
+  if(rec.queryExpr){
+    const q = parseQueryExpr(rec.queryExpr);
+    if(q) applyDefinitionQuery(id, q.field, q.op, q.value);
+  }
+  if(rec.visible === false){
+    lyr.visible = false;
+    map.removeLayer(lyr.leafletLayer);
+  }
+}
+
+async function restoreAutosaveState(){
+  clearTimeout(_autosaveTimer); // cancel whatever the initial empty-state renderLayerList() scheduled
+  _autosaveRestoring = true;
+  try{
+    const [layerRecords, metaRecords] = await Promise.all([idbGetAll('layers'), idbGetAll('meta')]);
+    if(layerRecords.length === 0) return;
+
+    for(const rec of layerRecords){
+      try{ await restoreAutosavedLayer(rec); }
+      catch(e){ console.warn('[autosave] failed to restore layer', rec && rec.name, e); }
+    }
+
+    const session = metaRecords.find(m => m.key === 'session');
+    if(session){
+      if(Array.isArray(session.bookmarks)){ bookmarks = session.bookmarks; renderCatalogBookmarks(); }
+      if(session.view && session.view.center) map.setView(session.view.center, session.view.zoom);
+    }
+    renderLayerList();
+    refreshTable();
+  }catch(e){
+    console.warn('[autosave] failed to restore session:', e);
+  }finally{
+    _autosaveRestoring = false;
+  }
+}
+
+// Best-effort flush so the last couple of seconds of edits aren't lost if
+// the tab is closed before the debounce timer would otherwise have fired.
+document.addEventListener('visibilitychange', () => {
+  if(document.visibilityState === 'hidden'){ clearTimeout(_autosaveTimer); persistAutosaveState(); }
+});
+window.addEventListener('beforeunload', () => { clearTimeout(_autosaveTimer); persistAutosaveState(); });
+
+restoreAutosaveState();
 
 // ---------- CRS Picker ----------
 (function(){
@@ -4546,6 +5541,7 @@ function createFeatureClassInGpkg(dbIdx, fcName, geomType){
 /* ── Sync a sketch layer's features into its linked GeoPackage table ─ */
 
 function syncLinkedFeatureClass(layerId){
+  scheduleAutosave(); // geometry edits (vertex drag, move) land here even when nothing else re-renders the layer list
   if(!layerId || !layers[layerId]) return false;
   const lyr = layers[layerId];
   let synced = false;

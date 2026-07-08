@@ -1,0 +1,700 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MapLite — User Guide</title>
+<style>
+  :root{
+    --bg-app:#1e1f22;
+    --bg-panel:#272a2f;
+    --bg-panel-raised:#2f3238;
+    --bg-ribbon:#1b3a57;
+    --bg-ribbon-dark:#142c44;
+    --accent:#3da7e0;
+    --accent-ink:#bfe4f7;
+    --accent-soft:rgba(61,167,224,0.16);
+    --accent-soft-strong:rgba(61,167,224,0.28);
+    --border:#3a3e45;
+    --text:#e7e9ec;
+    --text-dim:#9aa3ad;
+    --text-faint:#6b7480;
+    --tip:#e0b13d;
+    --tip-soft:rgba(224,177,61,0.13);
+    --caution:#e0635a;
+    --caution-soft:rgba(224,99,90,0.13);
+    --good:#5ec98f;
+    --good-soft:rgba(94,201,143,0.13);
+    --ui: "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+    --mono: "Cascadia Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  }
+
+  *{box-sizing:border-box;}
+  html{background:var(--bg-app);}
+  body{
+    margin:0; background:var(--bg-app); color:var(--text);
+    font-family:var(--ui); line-height:1.6; font-size:15.5px;
+    -webkit-font-smoothing:antialiased;
+  }
+  ::selection{background:var(--accent-soft-strong);}
+
+  a{color:var(--accent-ink); text-decoration-color:var(--accent-soft-strong); text-underline-offset:2px;}
+  a:hover{text-decoration-color:currentColor;}
+  a:focus-visible, button:focus-visible{outline:2px solid var(--accent); outline-offset:2px; border-radius:2px;}
+
+  h1,h2,h3,h4{font-family:var(--ui); color:var(--text); text-wrap:balance;}
+  p{max-width:66ch;}
+  code, kbd{font-family:var(--mono);}
+
+  .page{max-width:820px; margin:0 auto; padding:0 28px 120px;}
+
+  .app-header{
+    background:var(--bg-ribbon-dark); border-bottom:1px solid var(--border);
+    padding:20px 0;
+  }
+  .app-header-inner{
+    max-width:820px; margin:0 auto; padding:0 28px;
+    display:flex; align-items:center; justify-content:space-between; gap:20px; flex-wrap:wrap;
+  }
+  .brand{display:flex; align-items:center; gap:12px;}
+  .brand .mark{width: 120px; height:34px; flex:0 0 auto;}
+  .brand-text .name{font-size:19px; font-weight:700; color:var(--text); line-height:1.1;}
+  .brand-text .sub{font-size:12px; color:var(--text-faint); font-family:var(--mono); letter-spacing:.04em; text-transform:uppercase;}
+
+  .print-btn{
+    appearance:none; border:1px solid var(--border); background:var(--bg-panel-raised); color:var(--text);
+    font-family:var(--ui); font-size:13px; font-weight:600; padding:9px 16px; border-radius:6px;
+    cursor:pointer; display:inline-flex; align-items:center; gap:8px;
+  }
+  .print-btn:hover{border-color:var(--accent); color:var(--accent-ink); background:var(--accent-soft);}
+  .print-btn svg{width:15px; height:15px; stroke:currentColor; fill:none; stroke-width:1.7;}
+
+  .tabstrip-wrap{
+    position:sticky; top:0; z-index:20; background:var(--bg-ribbon); border-bottom:1px solid var(--border);
+    box-shadow:0 6px 16px rgba(0,0,0,0.28);
+  }
+  .tabstrip{
+    max-width:820px; margin:0 auto; padding:8px 20px; display:flex; gap:4px;
+    overflow-x:auto; scrollbar-width:thin;
+  }
+  .tabstrip::-webkit-scrollbar{height:5px;}
+  .tabstrip::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.18); border-radius:3px;}
+  .tab-link{
+    flex:0 0 auto; display:flex; align-items:center; gap:7px; padding:7px 13px; border-radius:6px;
+    font-size:12.5px; font-weight:600; color:var(--text-dim); text-decoration:none; white-space:nowrap;
+    border:1px solid transparent;
+  }
+  .tab-link .n{font-family:var(--mono); font-size:11px; color:var(--text-faint); font-weight:700;}
+  .tab-link:hover{background:rgba(255,255,255,0.08); color:var(--text);}
+  .tab-link.active{background:var(--accent-soft); border-color:var(--accent); color:var(--accent-ink);}
+  .tab-link.active .n{color:var(--accent);}
+
+  .chapter{scroll-margin-top:66px; padding:0 0 8px;}
+  .chapter-band{
+    background:linear-gradient(180deg, var(--chapter-color-soft, var(--accent-soft)), transparent);
+    border-bottom:1px solid var(--border); padding:34px 0 22px; margin-bottom:24px;
+  }
+  .chapter-band-inner{max-width:820px; margin:0 auto; padding:0 28px;}
+  .chapter .kicker{
+    font-family:var(--mono); font-size:12px; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--chapter-color, var(--accent)); margin:0 0 8px; display:flex; align-items:center; gap:8px;
+  }
+  .chapter h2{font-size:27px; margin:0 0 10px; font-weight:700;}
+  .lede{font-size:16px; color:var(--text-dim); max-width:62ch; margin:0;}
+  .chapter h3{font-size:15.5px; margin:30px 0 10px; color:var(--text); font-weight:700;}
+  .chapter p{color:var(--text-dim);}
+
+  .tbl-wrap{overflow-x:auto; margin:14px 0 22px; border:1px solid var(--border); border-radius:8px; background:var(--bg-panel);}
+  table{width:100%; border-collapse:collapse; font-size:13.5px; min-width:520px;}
+  thead th{
+    text-align:left; font-family:var(--ui); font-size:11px; text-transform:uppercase; letter-spacing:.06em;
+    color:var(--text-faint); background:var(--bg-panel-raised); padding:10px 14px; border-bottom:1px solid var(--border);
+  }
+  tbody td{padding:10px 14px; border-bottom:1px solid var(--border); vertical-align:top; color:var(--text-dim);}
+  tbody tr:last-child td{border-bottom:none;}
+  tbody tr:hover td{background:rgba(255,255,255,0.025);}
+  tbody td.term{color:var(--text); font-weight:600; white-space:nowrap;}
+  tbody td code{background:var(--accent-soft); padding:1px 6px; border-radius:4px; font-size:12px; color:var(--accent-ink);}
+
+  .callout{
+    display:flex; gap:12px; padding:14px 16px; border-radius:8px; margin:18px 0;
+    background:var(--bg-panel); border:1px solid var(--border); border-left:3px solid var(--callout-color, var(--accent));
+    font-size:14px;
+  }
+  .callout p{margin:0; max-width:none; color:var(--text-dim);}
+  .callout .icon{flex:0 0 auto; width:18px; height:18px; margin-top:2px;}
+  .callout .icon svg{width:100%; height:100%; fill:none; stroke-width:1.8; stroke:var(--callout-color, var(--accent));}
+  .callout .label{font-weight:700; margin-right:4px; color:var(--callout-color, var(--accent));}
+  .callout.tip{--callout-color:var(--tip);}
+  .callout.caution{--callout-color:var(--caution);}
+  .callout.note{--callout-color:var(--good);}
+
+  .steps{list-style:none; margin:18px 0; padding:0; counter-reset:step;}
+  .steps li{
+    counter-increment:step; display:grid; grid-template-columns:28px 1fr; gap:14px;
+    padding:12px 0; position:relative;
+  }
+  .steps li:not(:last-child)::after{
+    content:""; position:absolute; left:13px; top:38px; bottom:-4px; width:1px; background:var(--border);
+  }
+  .steps li::before{
+    content:counter(step); font-family:var(--mono); font-size:12px; font-weight:700;
+    width:26px; height:26px; border-radius:50%; background:var(--accent-soft); color:var(--accent-ink);
+    border:1px solid var(--accent); display:flex; align-items:center; justify-content:center; z-index:1;
+  }
+  .steps .step-body{color:var(--text-dim); font-size:14px; padding-top:2px;}
+  .steps .step-body strong{color:var(--text);}
+
+  .ui-diagram{
+    display:grid; grid-template-columns:74px 1fr 90px; grid-template-rows:30px 1fr 26px;
+    gap:4px; height:260px; margin:20px 0 26px; font-family:var(--mono); font-size:10.5px;
+    color:var(--text-faint);
+  }
+  .ui-diagram > div{
+    border:1px solid var(--border); border-radius:5px; background:var(--bg-panel);
+    display:flex; align-items:center; justify-content:center; text-align:center; padding:4px;
+  }
+  .ui-diagram .d-ribbon{grid-column:1/4; grid-row:1; background:var(--bg-ribbon); color:var(--accent-ink); font-weight:700; border-color:var(--accent);}
+  .ui-diagram .d-left{grid-column:1; grid-row:2;}
+  .ui-diagram .d-map{grid-column:2; grid-row:2; background:var(--accent-soft); color:var(--accent-ink); font-weight:700; border-color:var(--accent);}
+  .ui-diagram .d-right{grid-column:3; grid-row:2;}
+  .ui-diagram .d-status{grid-column:1/4; grid-row:3; font-size:9.5px;}
+
+  .row-anatomy{
+    border:1px solid var(--border); border-radius:8px; padding:14px 16px; margin:18px 0 8px;
+    background:var(--bg-panel); display:flex; align-items:center; gap:12px; font-size:13px;
+    flex-wrap:wrap;
+  }
+  .row-anatomy .swatch{width:14px; height:14px; border-radius:3px; background:var(--accent); flex:0 0 auto;}
+  .row-anatomy .name{font-weight:600; color:var(--text); flex:1 1 auto; min-width:80px;}
+  .row-chip{
+    font-family:var(--mono); font-size:11px; padding:2px 7px; border-radius:10px;
+    background:var(--accent-soft); color:var(--accent-ink); white-space:nowrap;
+  }
+  .anatomy-key{list-style:none; margin:10px 0 24px; padding:0; display:grid; gap:6px; font-size:13.5px; color:var(--text-dim);}
+  .anatomy-key li{display:flex; gap:10px;}
+  .anatomy-key strong{color:var(--text);}
+  .anatomy-key .dot{width:8px; height:8px; border-radius:50%; background:var(--accent); margin-top:7px; flex:0 0 auto;}
+
+  kbd{
+    display:inline-block; font-size:11.5px; padding:2px 7px; border-radius:5px;
+    background:var(--bg-panel-raised); border:1px solid var(--border); border-bottom-width:2px;
+    color:var(--text); font-weight:600;
+  }
+
+  .swatch-row{display:flex; flex-wrap:wrap; gap:6px; margin:10px 0 20px;}
+  .swatch-row span{
+    font-family:var(--mono); font-size:11px; padding:4px 9px; border-radius:5px;
+    background:var(--accent-soft); color:var(--accent-ink);
+  }
+
+  footer{
+    margin-top:56px; padding:26px 28px; border-top:1px solid var(--border); background:var(--bg-ribbon-dark);
+    color:var(--text-faint); font-size:12.5px;
+  }
+  footer .inner{max-width:820px; margin:0 auto; width:100%; display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap;}
+
+  @media (max-width:640px){
+    .tab-link .n{display:none;}
+    .page{padding:0 16px 100px;}
+    .chapter-band-inner, .app-header-inner{padding:0 16px;}
+  }
+
+  @media print{
+    html, body{background:#fff !important; color:#182a33 !important;}
+    :root{
+      --bg-app:#ffffff; --bg-panel:#ffffff; --bg-panel-raised:#f3f5f4; --bg-ribbon:#ffffff; --bg-ribbon-dark:#ffffff;
+      --accent:#1f6f9c; --accent-ink:#123a4f; --accent-soft:#eaf2f6; --accent-soft-strong:#d7e7ee;
+      --border:#cfd7d5; --text:#182a33; --text-dim:#3c4d55; --text-faint:#6b7b82;
+      --tip:#7c5417; --tip-soft:#faf1e3; --caution:#8a352b; --caution-soft:#f8e9e7; --good:#2f6b4f; --good-soft:#e8f3ee;
+    }
+    .no-print{display:none !important;}
+    .tabstrip-wrap{position:static; box-shadow:none;}
+    .app-header{border-bottom:2px solid #182a33;}
+    .page{max-width:none; padding:0 6mm;}
+    .chapter{page-break-inside:avoid-page; break-inside:avoid-page; scroll-margin-top:0;}
+    .chapter-band{background:none; border-bottom:1px solid #cfd7d5;}
+    a{color:#182a33; text-decoration:none;}
+    footer{background:#fff;}
+  }
+
+  @media (prefers-reduced-motion:no-preference){
+    .print-btn, .tab-link{transition:background-color .15s ease, border-color .15s ease, color .15s ease;}
+  }
+</style>
+</head>
+<body>
+
+  <header class="app-header">
+    <div class="app-header-inner">
+      <div class="brand">
+        <img src="data/logo.png" alt="" class="mark">
+      </div>
+      <button class="print-btn no-print" onclick="window.print()">
+        <svg viewBox="0 0 24 24"><path d="M6 9V2h12v7M6 18h12v4H6z"/><rect x="6" y="9" width="12" height="7"/></svg>
+        Print this guide
+      </button>
+    </div>
+  </header>
+
+  <nav class="tabstrip-wrap no-print" aria-label="Chapters">
+    <div class="tabstrip" id="tabstrip">
+      <a class="tab-link" href="#ch1"><span class="n">01</span>Getting Started</a>
+      <a class="tab-link" href="#ch2"><span class="n">02</span>Map</a>
+      <a class="tab-link" href="#ch3"><span class="n">03</span>Edit</a>
+      <a class="tab-link" href="#ch4"><span class="n">04</span>Analysis</a>
+      <a class="tab-link" href="#ch5"><span class="n">05</span>Raster Analysis</a>
+      <a class="tab-link" href="#ch6"><span class="n">06</span>View</a>
+      <a class="tab-link" href="#ch7"><span class="n">07</span>Catalog</a>
+      <a class="tab-link" href="#ch8"><span class="n">08</span>Layers</a>
+      <a class="tab-link" href="#ch9"><span class="n">09</span>Symbology</a>
+      <a class="tab-link" href="#ch10"><span class="n">10</span>Attributes</a>
+      <a class="tab-link" href="#ch11"><span class="n">11</span>Shortcuts</a>
+      <a class="tab-link" href="#ch12"><span class="n">12</span>Tips</a>
+    </div>
+  </nav>
+
+  <section class="chapter" id="ch1">
+    <div class="chapter-band" style="--chapter-color:var(--accent); --chapter-color-soft:var(--accent-soft);">
+      <div class="chapter-band-inner">
+        <p class="kicker" style="font-size: 15px;">Chapter 01 · Layout</p>
+        <h2>Getting started — the workspace</h2>
+        <p class="lede">MapLite's window is divided into five regions. Learning what lives where makes everything else in this guide faster to follow.</p>
+      </div>
+    </div>
+    <div class="page">
+    <div class="ui-diagram" role="img" aria-label="Diagram of the MapLite workspace: a Ribbon across the top, Contents/Catalog pane on the left, the Map in the center, an Attributes/Geoprocessing pane on the right, and a status bar at the bottom.">
+      <div class="d-ribbon">RIBBON — Map · Edit · Analysis · Raster Analysis · View</div>
+      <div class="d-left">Contents<br>/ Catalog</div>
+      <div class="d-map">MAP</div>
+      <div class="d-right">Attributes<br>/ Geoprocessing</div>
+      <div class="d-status">STATUS BAR — active tool · coordinates · zoom · selection count</div>
+    </div>
+
+    <div class="tbl-wrap"><table>
+      <tbody>
+        <tr><td class="term" style="width:170px;">Ribbon</td><td>Five tabs — <strong style="color:var(--text)">Map</strong>, <strong style="color:var(--text)">Edit</strong>, <strong style="color:var(--text)">Analysis</strong>, <strong style="color:var(--text)">Raster Analysis</strong>, <strong style="color:var(--text)">View</strong> — each holding a row of grouped tool buttons. Covered in Chapters 2–6.</td></tr>
+        <tr><td class="term">Contents / Catalog</td><td>Left-hand dock. <strong style="color:var(--text)">Contents</strong> lists the layers currently on your map; <strong style="color:var(--text)">Catalog</strong> lists your project's bookmarks, toolboxes, and connected geodatabases. Chapters 7–8.</td></tr>
+        <tr><td class="term">Map</td><td>The canvas itself. A search box, a basemap gallery, and a Go To XY box float over it as needed.</td></tr>
+        <tr><td class="term">Attributes / Geoprocessing</td><td>Right-hand dock — drag its left edge to resize. <strong style="color:var(--text)">Attributes</strong> edits the selected feature's fields; <strong style="color:var(--text)">Geoprocessing</strong> hosts the running form for whichever Analysis, Raster Analysis, or Edit tool you launched. Chapter 10.</td></tr>
+        <tr><td class="term">Status bar</td><td>Always-visible strip along the bottom: the active tool, live cursor coordinates, current zoom, and how many features are selected.</td></tr>
+      </tbody>
+    </table></div>
+
+    <div class="callout note">
+      <span class="icon"><svg viewBox="0 0 24 24"><path d="M12 2l4 8-4 12-4-12z"/></svg></span>
+      <p><span class="label">Note</span> An attribute table can also be pulled up from the bottom of the map at any time — see Chapter 10.</p>
+    </div>
+    </div>
+  </section>
+
+  <section class="chapter" id="ch2">
+    <div class="chapter-band" style="--chapter-color:#5db3e0; --chapter-color-soft:rgba(93,179,224,0.14);">
+      <div class="chapter-band-inner">
+        <p class="kicker" style="font-size: 15px;">Chapter 02 · Map tab</p>
+        <h2>Navigate, draw, select, measure</h2>
+        <p class="lede">The Map tab is where you spend most of your time: moving around, sketching new features, choosing what's selected, and getting data onto the map in the first place.</p>
+      </div>
+    </div>
+    <div class="page">
+
+    <h3>Navigation</h3>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Tool</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td class="term">Pan</td><td>Default tool — drag the map to move around.</td></tr>
+        <tr><td class="term">Zoom In / Zoom Out</td><td>Steps the map in or out one level.</td></tr>
+        <tr><td class="term">Full Extent</td><td>Returns the view to the continental-US starting extent.</td></tr>
+        <tr><td class="term">Go To XY</td><td>Opens a small latitude/longitude box — type coordinates and jump straight there.</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>Create Feature</h3>
+    <p>Opens a dropdown with <strong style="color:var(--text)">Point</strong>, <strong style="color:var(--text)">Line</strong>, and <strong style="color:var(--text)">Polygon</strong>. Click the map to place vertices; double-click (or click the last point again) to finish a line or polygon.</p>
+    <div class="callout tip">
+      <span class="icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg></span>
+      <p><span class="label">Tip</span> While drawing a line or polygon, right-click to type an exact segment — e.g. <code>150 east</code> — or type <code>FINISH</code> to close the shape without another click.</p>
+    </div>
+
+    <h3>Edit</h3>
+    <p>Click a feature to select it, edit its attributes, and drag its individual vertices to reshape it. Edit <strong style="color:var(--text)">only reshapes</strong> — to relocate a whole feature without deforming it, use <strong style="color:var(--text)">Move</strong> on the Edit tab (Chapter 3).</p>
+
+    <h3>Select</h3>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Tool</th><th>Shortcut</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td class="term">Identify</td><td><kbd>I</kbd></td><td>Click a feature to select it and view its attributes.</td></tr>
+        <tr><td class="term">Rectangle Select</td><td><kbd>R</kbd></td><td>Drag a box; everything inside is selected.</td></tr>
+        <tr><td class="term">Lasso Select</td><td><kbd>L</kbd></td><td>Freehand an outline to select what falls inside it.</td></tr>
+        <tr><td class="term">Select by Attribute</td><td>—</td><td>Build a field/operator/value query to select matching features.</td></tr>
+        <tr><td class="term">Select by Location</td><td>—</td><td>Select features based on their spatial relationship to another layer.</td></tr>
+        <tr><td class="term">Select All / Invert / Clear</td><td>—</td><td>Bulk selection operations across the active layer.</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>Measure</h3>
+    <p><strong style="color:var(--text)">Distance</strong> and <strong style="color:var(--text)">Area</strong> sketch a temporary line or polygon and print a live readout (km/ft, or km²/ft²) as you draw — nothing is added to your layers. <strong style="color:var(--text)">Clear</strong> removes all measurement sketches.</p>
+
+    <h3>Bookmarks, basemaps &amp; data</h3>
+    <p><strong style="color:var(--text)">Add Bookmark</strong> saves the current view under Catalog ▸ Bookmarks for one-click return later. <strong style="color:var(--text)">Basemap</strong> opens a gallery of five backgrounds: Streets, Topographic, Imagery, Dark Gray, and OpenStreetMap.</p>
+    <p><strong style="color:var(--text)">Add Data</strong> opens a file picker accepting:</p>
+    <div class="swatch-row">
+      <span>.geojson / .json</span><span>.zip (shapefile)</span><span>.shp + .dbf + .prj</span><span>.tif / .tiff</span>
+    </div>
+    <p style="margin-top:-8px;">GeoTIFFs are rendered as a raster layer and the map zooms to fit automatically.</p>
+    </div>
+  </section>
+
+  <section class="chapter" id="ch3">
+    <div class="chapter-band" style="--chapter-color:var(--tip); --chapter-color-soft:var(--tip-soft);">
+      <div class="chapter-band-inner">
+        <p class="kicker" style="font-size: 15px;">Chapter 03 · Edit tab</p>
+        <h2>Move, merge, explode, erase</h2>
+        <p class="lede">Four editing operations grouped together because each one changes existing features rather than creating or analyzing new ones.</p>
+      </div>
+    </div>
+    <div class="page">
+
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Tool</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td class="term">Move</td><td>Click and drag a whole feature to relocate it — every vertex shifts together, so the shape never distorts. This is the complement to the Map tab's Edit tool, which only reshapes.</td></tr>
+        <tr><td class="term">Merge</td><td>Combines features from two chosen layers into one, with no geometric processing — a straight union of the feature lists.</td></tr>
+        <tr><td class="term">Explode</td><td>Splits a selected multi-part feature (a shape made of several disconnected pieces) into separate single-part features, each keeping the original's attributes. Features that are already single-part are left untouched.</td></tr>
+        <tr><td class="term">Erase</td><td>Removes whatever portion of your input features overlaps a second "erase" layer — the inverse of Clip.</td></tr>
+      </tbody>
+    </table></div>
+
+    <div class="callout note">
+      <span class="icon"><svg viewBox="0 0 24 24"><path d="M12 2l4 8-4 12-4-12z"/></svg></span>
+      <p><span class="label">Note</span> Merge and Erase here are the exact same tools as on the Analysis tab (Chapter 4) — they're just placed here too, next to the other editing operations, for convenience.</p>
+    </div>
+    </div>
+  </section>
+
+  <section class="chapter" id="ch4">
+    <div class="chapter-band" style="--chapter-color:var(--good); --chapter-color-soft:var(--good-soft);">
+      <div class="chapter-band-inner">
+        <p class="kicker" style="font-size: 15px;">Chapter 04 · Analysis tab</p>
+        <h2>Geoprocessing</h2>
+        <p class="lede">Every button here opens the same kind of form in the Geoprocessing pane: pick your input layer(s), set any parameters, then press <strong style="color:var(--text)">Run</strong>. Results land as a new layer, ready to symbolize or export.</p>
+      </div>
+    </div>
+    <div class="page">
+
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Tool</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td class="term">Buffer</td><td>Draws a polygon around each input feature (meters, km, feet, or miles). Enter up to three distances to get multiple buffer rings, each tagged with a DISTANCE attribute — choose one combined layer (auto-colored per ring, with non-overlapping ring labels) or a separate layer per ring you can toggle individually.</td></tr>
+        <tr><td class="term">Near</td><td>Finds each feature's nearest neighbor in another layer and records the distance and ID.</td></tr>
+        <tr><td class="term">Clip</td><td>Keeps only the portions of your input features that fall inside a clip layer.</td></tr>
+        <tr><td class="term">Erase</td><td>Removes the portions that overlap an erase layer.</td></tr>
+        <tr><td class="term">Intersect</td><td>Computes the geometric overlap of two polygon layers.</td></tr>
+        <tr><td class="term">Union</td><td>Combines two polygon layers into their full combined footprint.</td></tr>
+        <tr><td class="term">Merge</td><td>Combines two layers' features into one, unprocessed.</td></tr>
+        <tr><td class="term">Spatial Join</td><td>Copies attributes from the nearest feature in a second layer onto each target feature.</td></tr>
+        <tr><td class="term">Dissolve</td><td>Merges all features in a layer down to as few features as possible.</td></tr>
+        <tr><td class="term">Centroid</td><td>Plots the center point of every input feature.</td></tr>
+        <tr><td class="term">Convex Hull</td><td>Draws the smallest polygon that encloses every input feature.</td></tr>
+        <tr><td class="term">To KML</td><td>Exports a layer as .kml or zipped .kmz, for opening in Google Earth.</td></tr>
+        <tr><td class="term">GDB to GPKG</td><td>Converts a real ESRI File Geodatabase folder into an open GeoPackage. Full walkthrough in Chapter 7.</td></tr>
+        <tr><td class="term">Route Analysis</td><td>Splits a route line everywhere it crosses one or more checked reference layers. See below.</td></tr>
+      </tbody>
+    </table></div>
+
+    <div class="callout tip">
+      <span class="icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg></span>
+      <p><span class="label">Tip</span> Most tools offer a "use selection only" checkbox next to their layer picker — turn it on to run the analysis against just the features you've already selected, instead of the whole layer.</p>
+    </div>
+
+    <h3>Route Analysis</h3>
+    <p>Built for corridor/crossing work — a proposed road or pipeline route crossing federal land, tribal land, other roads, or existing pipelines. Pick a line layer as the <strong style="color:var(--text)">Route</strong>, then check any number of <strong style="color:var(--text)">Reference Layers</strong> to test it against (the checklist excludes whatever's picked as the route, and updates automatically if you change it).</p>
+    <ul class="anatomy-key">
+      <li><span class="dot"></span> <strong>Reference polygons</strong> (federal land, tribal land, a study area…) split the route at their boundary and tag whichever segment falls inside as <code>Intersecting {layer name}</code>. A segment inside more than one overlapping polygon gets a combined label, e.g. <code>Intersecting Federal_Land, Tribal_Land</code>.</li>
+      <li><span class="dot"></span> <strong>Reference lines</strong> (another road, another pipeline) only split the route where it crosses them — they don't add a label of their own, since a line crossing has no "inside."</li>
+      <li><span class="dot"></span> <strong>Reference points</strong> (a well site, a marker) split the route at the nearest point on the line, but only if the point falls within the <strong style="color:var(--text)">Point Snap Tolerance</strong> distance — otherwise unrelated points elsewhere on the map are ignored.</li>
+      <li><span class="dot"></span> Segments that don't fall inside any reference polygon are tagged <code>Clear</code>.</li>
+    </ul>
+    <p>The output is one new layer, with every segment carrying a <code>CROSSING</code> attribute (its label) plus <code>LENGTH_M</code> and <code>LENGTH_MI</code> attributes computed automatically — no need to run Field Calculator just for length, though it's still there if you want a different unit or a custom calculation. The layer is auto-symbolized with Unique Values on <code>CROSSING</code>, so every category already has its own color; right-click ▸ Symbology… to repick the palette or recolor individual categories by hand.</p>
+    </div>
+  </section>
+
+  <section class="chapter" id="ch5">
+    <div class="chapter-band" style="--chapter-color:#e0954a; --chapter-color-soft:rgba(224,149,74,0.14);">
+      <div class="chapter-band-inner">
+        <p class="kicker" style="font-size: 15px;">Chapter 05 · Raster Analysis tab</p>
+        <h2>Hillshade, Slope &amp; NDVI</h2>
+        <p class="lede">Runs directly on a GeoTIFF's pixel grid rather than on features. Same Geoprocessing pane, same Run button — the input is just a raster layer instead of a feature layer.</p>
+      </div>
+    </div>
+    <div class="page">
+
+    <p>Every tool here needs a GeoTIFF already on the map — use <strong style="color:var(--text)">Add Data</strong> on the Map tab to load a <code>.tif</code>/<code>.tiff</code> first (Chapter 2). Only raster layers loaded that way appear in each tool's layer picker; rasters produced by these tools themselves (a Hillshade or Slope result, say) won't show up as input to another run, since they're a rendered image rather than a georeferenced grid.</p>
+
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Tool</th><th>What it does</th><th>Parameters</th></tr></thead>
+      <tbody>
+        <tr><td class="term">Hillshade</td><td>Shades an elevation raster as if lit by the sun, giving flat imagery a 3D, walked-the-terrain look.</td><td>Azimuth (sun direction, 0–360°), Altitude (sun height, 0–90°), Z-factor</td></tr>
+        <tr><td class="term">Slope</td><td>Colors each cell by how steep it is — green for flat ground, through yellow and orange to red for the steepest slopes.</td><td>Z-factor</td></tr>
+        <tr><td class="term">NDVI</td><td>Normalized Difference Vegetation Index — highlights healthy vegetation (green) versus bare ground or water (brown), computed from a multiband image's Red and Near-Infrared bands.</td><td>Red Band #, NIR Band # (1-based)</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>Running one</h3>
+    <ol class="steps">
+      <li><span class="step-body">Load an elevation GeoTIFF (for Hillshade/Slope) or a multiband imagery GeoTIFF (for NDVI) via <strong>Add Data</strong> on the Map tab.</span></li>
+      <li><span class="step-body">Switch to the <strong>Raster Analysis</strong> tab and click <strong>Hillshade</strong>, <strong>Slope</strong>, or <strong>NDVI</strong>.</span></li>
+      <li><span class="step-body">In the Geoprocessing pane, choose your raster from the dropdown and set the tool's parameters.</span></li>
+      <li><span class="step-body">Press <strong>Run</strong>. The result is added to Contents as a new raster layer — named after the source, e.g. <code>dem (Hillshade)</code> — that you can toggle, reorder, or remove exactly like any other raster.</span></li>
+    </ol>
+
+    <div class="callout tip">
+      <span class="icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg></span>
+      <p><span class="label">Tip</span> Raise the Z-factor on Hillshade or Slope if your elevation values are in different units than the raster's horizontal spacing (e.g. elevation in feet over a raster measured in meters) — it exaggerates vertical relief to compensate.</p>
+    </div>
+
+    <div class="callout note">
+      <span class="icon"><svg viewBox="0 0 24 24"><path d="M12 2l4 8-4 12-4-12z"/></svg></span>
+      <p><span class="label">Note</span> NDVI's band numbers depend on how your imagery was captured — there's no universal standard. A common 4-band drone/satellite order is Red=1, Green=2, Blue=3, NIR=4, but check your source; if the output looks inverted (bare ground reads green), your Red and NIR bands are likely swapped.</p>
+    </div>
+    </div>
+  </section>
+
+  <section class="chapter" id="ch6">
+    <div class="chapter-band" style="--chapter-color:#b18cf0; --chapter-color-soft:rgba(177,140,240,0.14);">
+      <div class="chapter-band-inner">
+        <p class="kicker" style="font-size: 15px;">Chapter 06 · View tab</p>
+        <h2>Panes, projects &amp; printing</h2>
+      </div>
+    </div>
+    <div class="page">
+
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Button</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td class="term">Contents / Catalog / Attributes / Geoprocessing</td><td>Re-opens the given pane if you've closed it.</td></tr>
+        <tr><td class="term">Save Project</td><td>Downloads your current layers and settings as a single .json file.</td></tr>
+        <tr><td class="term">Open Project</td><td>Loads a previously saved .json project file back in.</td></tr>
+        <tr><td class="term">Print</td><td>Opens the full-screen Layout view.</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>The Layout view</h3>
+    <p>Print takes a snapshot of your current map, then gives you a blank page (Letter or A4, portrait or landscape) to compose it for output. Drag on a Map Frame, Legend, Title, North Arrow, Scale Bar, or Text Box; drag and resize each element directly, and edit its details from the side panel. When it's ready, export the page as a PNG or a PDF.</p>
+
+    <div class="callout note">
+      <span class="icon"><svg viewBox="0 0 24 24"><path d="M12 2l4 8-4 12-4-12z"/></svg></span>
+      <p><span class="label">Note</span> You don't need Save Project just to avoid losing work — MapLite automatically keeps everything (layers, symbology, labels, even loaded rasters) in this browser's local storage as you go. Close the tab or restart the browser and it's still there next time; a layer is only really gone once you remove it yourself. Save Project / Open Project are there for a different purpose — exporting a project file to hand to someone else, or back up outside the browser.</p>
+    </div>
+    </div>
+  </section>
+
+  <section class="chapter" id="ch7">
+    <div class="chapter-band" style="--chapter-color:var(--accent); --chapter-color-soft:var(--accent-soft);">
+      <div class="chapter-band-inner">
+        <p class="kicker" style="font-size: 15px;">Chapter 07 · Data</p>
+        <h2>Catalog &amp; geodatabases</h2>
+        <p class="lede">The Catalog tab (left dock) is where you connect to and build geospatial databases — GeoPackages (.gpkg) natively, and a path to convert real Esri File Geodatabases too.</p>
+      </div>
+    </div>
+    <div class="page">
+
+    <h3>Connecting to data</h3>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Button</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td class="term">+ New</td><td>Creates a brand-new, empty GeoPackage — name it, then add feature classes to it.</td></tr>
+        <tr><td class="term">⬆ Connect</td><td>Opens a file picker for <code>.gpkg</code>, <code>.zip</code>, <code>.shp</code>, or <code>.geojson</code>.</td></tr>
+        <tr><td class="term">🌐 ArcGIS</td><td>Connects to a live ArcGIS REST feature service by URL.</td></tr>
+      </tbody>
+    </table></div>
+
+    <div class="callout caution">
+      <span class="icon"><svg viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01M10.3 3.9L2.6 17a2 2 0 001.7 3h15.4a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/></svg></span>
+      <p><span class="label">Caution</span> Esri File Geodatabases (<code>.gdb</code>, and personal-geodatabase formats like <code>.mdb</code>/<code>.accdb</code>) are a proprietary binary format the browser can't open directly. Use the GDB to GPKG tool below instead of trying to Connect to one.</p>
+    </div>
+
+    <h3>Converting a File Geodatabase to GeoPackage</h3>
+    <p>Found on the Analysis tab. It runs a genuine copy of GDAL — compiled to WebAssembly — entirely inside your browser tab, so no data leaves your machine.</p>
+    <ol class="steps">
+      <li><span class="step-body"><strong>Choose the .gdb folder itself</strong> — not a parent folder, and not a zipped copy. MapLite checks for real File Geodatabase internals (files like <code>.gdbtable</code>) and will tell you exactly what it found if the folder doesn't look right.</span></li>
+      <li><span class="step-body"><strong>Wait for the one-time download.</strong> The first conversion in a session fetches GDAL (WebAssembly), roughly 30 MB — after that it's cached for the rest of the session.</span></li>
+      <li><span class="step-body">MapLite repackages the folder in-browser and hands it to GDAL as one complete dataset, so every feature class inside is recognized — not just the first one.</span></li>
+      <li><span class="step-body">GDAL converts it to GeoPackage format.</span></li>
+      <li><span class="step-body">The finished <strong>.gpkg downloads automatically</strong> and is also loaded straight into Catalog, ready to use immediately.</span></li>
+    </ol>
+    </div>
+  </section>
+
+  <section class="chapter" id="ch8">
+    <div class="chapter-band" style="--chapter-color:#5db3e0; --chapter-color-soft:rgba(93,179,224,0.14);">
+      <div class="chapter-band-inner">
+        <p class="kicker" style="font-size: 15px;">Chapter 08 · Layers</p>
+        <h2>Contents pane — managing layers</h2>
+        <p class="lede">Every layer on your map gets a row in the Contents pane. Here's what each part of that row does.</p>
+      </div>
+    </div>
+    <div class="page">
+
+    <div class="row-anatomy">
+      <input type="checkbox" checked disabled>
+      <span class="swatch"></span>
+      <span class="name">Parcels_2024</span>
+      <span class="row-chip">✎ editing</span>
+      <span class="row-chip">128</span>
+      <span class="row-chip">▲ ▼</span>
+      <span class="row-chip">💾</span>
+    </div>
+    <ul class="anatomy-key">
+      <li><span class="dot"></span> <strong>Checkbox</strong> — shows or hides the layer.</li>
+      <li><span class="dot"></span> <strong>Swatch</strong> — the layer's current color (or a 🖼 icon for a raster layer).</li>
+      <li><span class="dot"></span> <strong>Name</strong> — click the row to make it the active layer; new sketches and edits target whichever layer is active.</li>
+      <li><span class="dot"></span> <strong>✎ badge</strong> — appears only on the active layer.</li>
+      <li><span class="dot"></span> <strong>Feature count</strong> — how many features are in the layer (hidden for rasters).</li>
+      <li><span class="dot"></span> <strong>▲ / ▼</strong> — reorders the layer, which also changes its draw order on the map.</li>
+      <li><span class="dot"></span> <strong>💾 Save</strong> — writes any edits back to the layer's linked geodatabase feature class, if it has one.</li>
+    </ul>
+
+    <div class="callout note">
+      <span class="icon"><svg viewBox="0 0 24 24"><path d="M12 2l4 8-4 12-4-12z"/></svg></span>
+      <p><span class="label">Note</span> Geometry edits — dragging a vertex, a marker, or a whole feature with Move — save to a linked geodatabase automatically the moment you finish the drag. The 💾 button is mainly there for attribute edits, or for peace of mind.</p>
+    </div>
+
+    <h3>Right-click a layer for more</h3>
+    <p>Zoom To Layer, Attribute Table, Select All Features, Symbology…, Definition Query…, Configure Popup…, Label Features…, Move Up/Down, Rename…, Export as GeoJSON, Properties…, and Remove Layer. (The attribute- and symbology-related options are hidden for raster layers, which don't have per-feature data.)</p>
+    </div>
+  </section>
+
+  <section class="chapter" id="ch9">
+    <div class="chapter-band" style="--chapter-color:var(--tip); --chapter-color-soft:var(--tip-soft);">
+      <div class="chapter-band-inner">
+        <p class="kicker" style="font-size: 15px;">Chapter 09 · Style</p>
+        <h2>Symbology</h2>
+        <p class="lede">Opened from a layer's right-click menu. Four modes, chosen as tabs inside the same dialog.</p>
+      </div>
+    </div>
+    <div class="page">
+
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Mode</th><th>Best for</th><th>What you set</th></tr></thead>
+      <tbody>
+        <tr><td class="term">Single Symbol</td><td>Any layer where every feature should look the same</td><td>Stroke/fill color, stroke width, opacity, point radius</td></tr>
+        <tr><td class="term">Graduated Color</td><td>A numeric field, e.g. population or elevation</td><td>Field, color ramp (18 presets) or custom min/max, 3–10 class breaks, classification method (Quantile / Equal Interval / Natural Breaks)</td></tr>
+        <tr><td class="term">Unique Values</td><td>A categorical field, e.g. land-use type</td><td>Field, a qualitative palette, then per-value colors (auto-generated, individually editable)</td></tr>
+        <tr><td class="term">Heat Map</td><td>Dense point layers</td><td>Optional weight field, radius, blur, intensity, and a low/mid/high color gradient</td></tr>
+      </tbody>
+    </table></div>
+    <p style="font-size:13px; color:var(--text-faint);">Heat Map only appears as an option when the layer contains point geometry.</p>
+
+    <h3>Effects</h3>
+    <p>Below the four mode tabs, an <strong style="color:var(--text)">Effects</strong> section applies on top of whichever mode is active — a <strong style="color:var(--text)">Drop Shadow</strong> (color, blur, offset X/Y) and an <strong style="color:var(--text)">Outer Glow</strong> (color, blur) for making a layer's outline pop against a busy basemap. Since these are rendering effects rather than a classification, there's just one shared setting per layer instead of a separate one for each mode.</p>
+    </div>
+  </section>
+
+  <section class="chapter" id="ch10">
+    <div class="chapter-band" style="--chapter-color:var(--good); --chapter-color-soft:var(--good-soft);">
+      <div class="chapter-band-inner">
+        <p class="kicker" style="font-size: 15px;">Chapter 10 · Data entry</p>
+        <h2>Attribute table &amp; editing</h2>
+      </div>
+    </div>
+    <div class="page">
+
+    <h3>Attribute table</h3>
+    <p>Opens along the bottom of the map. Click a column header to sort by it; right-click a header for Sort, Statistics, Field Calculator, and Select-by-this-field. Click a row to select that feature on the map (the view pans to it if it's off-screen); Shift-click to add more rows to the selection. <strong style="color:var(--text)">Export CSV</strong> downloads exactly what's currently shown.</p>
+
+    <h3>Attribute editor</h3>
+    <p>Selecting a single feature (with Identify or Edit) opens its fields in the right-hand Attributes pane — one row per field, each with a name, a Text/Number type, a value, and a remove button. <strong style="color:var(--text)">+ Add Field</strong> appends a blank row; <strong style="color:var(--text)">Save Attributes</strong> commits your changes and updates the feature's map popup.</p>
+    <p>While the Edit tool is active, a banner reminds you that you can drag vertices directly on the map — click <strong style="color:var(--text)">Finish</strong> when you're done to release the feature and return to the Pan tool.</p>
+    </div>
+  </section>
+
+  <section class="chapter" id="ch11">
+    <div class="chapter-band" style="--chapter-color:var(--accent); --chapter-color-soft:var(--accent-soft);">
+      <div class="chapter-band-inner">
+        <p class="kicker" style="font-size: 15px;">Chapter 11 · Reference</p>
+        <h2>Keyboard shortcuts</h2>
+      </div>
+    </div>
+    <div class="page">
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Key</th><th>Action</th></tr></thead>
+      <tbody>
+        <tr><td><kbd>P</kbd></td><td>Switch to Pan</td></tr>
+        <tr><td><kbd>I</kbd></td><td>Switch to Identify</td></tr>
+        <tr><td><kbd>R</kbd></td><td>Switch to Rectangle Select</td></tr>
+        <tr><td><kbd>L</kbd></td><td>Switch to Lasso Select</td></tr>
+        <tr><td><kbd>N</kbd></td><td>Switch to point creation</td></tr>
+        <tr><td><kbd>Esc</kbd></td><td>Cancel the shape in progress, or clear the current selection</td></tr>
+        <tr><td><kbd>Delete</kbd> / <kbd>Backspace</kbd></td><td>Delete the selected feature(s)</td></tr>
+        <tr><td><kbd>Ctrl</kbd> + <kbd>A</kbd></td><td>Select all features on the active layer</td></tr>
+      </tbody>
+    </table></div>
+    <p style="font-size:13px; color:var(--text-faint);">Shortcuts are ignored while you're typing in a text field, so they won't interfere with naming a layer or entering a value.</p>
+    </div>
+  </section>
+
+  <section class="chapter" id="ch12">
+    <div class="chapter-band" style="--chapter-color:var(--caution); --chapter-color-soft:var(--caution-soft);">
+      <div class="chapter-band-inner">
+        <p class="kicker"  style="font-size: 15px;">Chapter 12 · Notes</p>
+        <h2>Tips &amp; troubleshooting</h2>
+      </div>
+    </div>
+    <div class="page">
+
+    <div class="callout tip">
+      <span class="icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg></span>
+      <p><span class="label">Tip</span> The status bar's coordinate-system picker isn't just a label — switching it (WGS 84, Web Mercator, N. America Albers, Lambert Conformal Conic, or UTM 15N) actually re-projects the live map.</p>
+    </div>
+
+    <div class="callout tip">
+      <span class="icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg></span>
+      <p><span class="label">Tip</span> Reconnecting to a <code>.gpkg</code> file (rather than creating one with + New) keeps a live, writable link to that same file on disk in supporting browsers — edits can save straight back to it.</p>
+    </div>
+
+    <div class="callout caution">
+      <span class="icon"><svg viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01M10.3 3.9L2.6 17a2 2 0 001.7 3h15.4a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/></svg></span>
+      <p><span class="label">Caution</span> Folder-picking features (connecting to data, converting a geodatabase) work best in Chromium-based browsers. Elsewhere, MapLite falls back to a plain file picker automatically.</p>
+    </div>
+
+    <div class="callout caution">
+      <span class="icon"><svg viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01M10.3 3.9L2.6 17a2 2 0 001.7 3h15.4a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/></svg></span>
+      <p><span class="label">Caution</span> A layer only auto-saves geometry edits if it's linked to a geodatabase feature class. An un-linked sketch layer will hold your edits for the session, but won't persist them anywhere on its own.</p>
+    </div>
+
+    <div class="callout note">
+      <span class="icon"><svg viewBox="0 0 24 24"><path d="M12 2l4 8-4 12-4-12z"/></svg></span>
+      <p><span class="label">Note</span> The address search box uses the free OpenStreetMap/Nominatim geocoder — no API key required, but it's a shared public service, so very rapid searching may be rate-limited.</p>
+    </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="inner">
+      <span>MapLite User Guide</span>
+      <span>For internal reference — not affiliated with Esri or ArcGIS</span>
+    </div>
+  </footer>
+
+<script>
+  if('IntersectionObserver' in window){
+    var tabs = Array.prototype.slice.call(document.querySelectorAll('.tab-link'));
+    var byHash = {};
+    tabs.forEach(function(t){ byHash[t.getAttribute('href')] = t; });
+    var obs = new IntersectionObserver(function(entries){
+      entries.forEach(function(entry){
+        var tab = byHash['#' + entry.target.id];
+        if(!tab) return;
+        if(entry.isIntersecting){
+          tabs.forEach(function(t){ t.classList.remove('active'); });
+          tab.classList.add('active');
+          tab.scrollIntoView({ block:'nearest', inline:'center', behavior:'smooth' });
+        }
+      });
+    }, { rootMargin:'-40% 0px -55% 0px' });
+    document.querySelectorAll('.chapter').forEach(function(ch){ obs.observe(ch); });
+  }
+</script>
+</body>
+</html>

@@ -46,7 +46,9 @@ html,body{margin:0;height:100%;background:var(--bg-app);color:var(--text);font-f
   margin-right:6px;border-right:1px solid rgba(255,255,255,0.08);
   font-size:15px;font-weight:600;color:var(--text);-webkit-user-select:none;user-select:none;
 }
-.ribbon-brand img{height:24px;width:auto;display:block;}
+.ribbon-brand img{height:26px;width:auto;display:block; box-shadow: 0.21px 0.25px 5px 1px #FFF1CC;
+border:0.5px solid white;
+margin-bottom:2px;}
 .ribbon-tab.active{background:var(--bg-ribbon);color:var(--text);font-weight:600;}
 .ribbon-tab:hover:not(.active){background:rgba(255,255,255,0.04);color:var(--text);}
 
@@ -375,8 +377,12 @@ body.resizing-panel{-webkit-user-select:none;user-select:none;cursor:col-resize;
     -1px  1px 2px rgba(0,0,0,0.95),
      1px  1px 2px rgba(0,0,0,0.95),
      0    0   8px rgba(0,0,0,0.85) !important;
+  pointer-events: auto !important;
+  cursor: move !important;
 }
 .leaflet-tooltip.feature-label::before{ display:none !important; }
+.leaflet-tooltip.feature-label:hover{ filter: brightness(1.35); }
+.leaflet-tooltip.feature-label.label-dragging{ filter: brightness(1.6); }
 
 /* ---------- Status bar ---------- */
 #statusbar{
@@ -448,11 +454,11 @@ body.resizing-panel{-webkit-user-select:none;user-select:none;cursor:col-resize;
 .leaflet-marker-icon.leaflet-editing-icon::before{
   display:none !important;
 }
-.leaflet-control-attribution{background:rgba(7, 7, 7, 0.9) !important;color:var(--text-faint) !important;font-size:13px !important; width:210px; height:30px; padding:7px; padding-left:9px; border-radius:3px;}
+.leaflet-control-attribution{background:rgba(7, 7, 7, 0.9) !important;color:var(--text-faint) !important;font-size:13px !important; width:230px; height:30px; padding:7px; padding-left:9px; border-radius:3px;}
 .leaflet-control-attribution a{color:var(--text-dim) !important;}
-.leaflet-control-scale-line{background:rgba(41, 40, 40, 0.9) !important;color:var(--text) !important;border-color:var(--text-faint) !important;}
+.leaflet-control-scale-line{background:rgba(41, 40, 40, 0.9) !important;color:var(--text) !important;border-color:var(--text-faint) !important;text-shadow:none !important;}
 .leaflet-popup-content-wrapper{background:rgb(2, 59, 55);border: 1px solid rgb(252, 248, 4); color:var(--text);border-radius:6px;}
-.leaflet-popup-tip{background:rgb(5, 78, 214);}
+.leaflet-popup-tip{background:rgb(253, 249, 2);border:1px solid #000;}
 .leaflet-bar a{background:var(--bg-panel) !important;color:var(--text) !important;border-color:var(--border) !important;}
 .leaflet-bar a:hover{background:var(--bg-panel-raised) !important;}
 
