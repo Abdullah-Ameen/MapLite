@@ -6389,3 +6389,109 @@ async function convertGdbFolderToGpkg(fileList, onProgress){
     document.addEventListener('mousedown', closeCatalogCtx, { once: true });
   });
 })();
+
+/* ── Contact Author (status bar) ──────────────────────────────────────
+   No backend on this static site, so submissions go straight to
+   FormSubmit.co's AJAX endpoint, which emails CONTACT_AUTHOR_EMAIL directly
+   — no email client opens for the visitor. FormSubmit needs no signup/API
+   key, but the very first message ever sent to a given address triggers a
+   one-time confirmation email that address's owner must click before
+   FormSubmit will actually forward anything after that. */
+const CONTACT_AUTHOR_EMAIL = 'abdullah.ameenn@gmail.com';
+const CONTACT_FORM_ENDPOINT = `https://formsubmit.co/ajax/${CONTACT_AUTHOR_EMAIL}`;
+
+function showContactAuthorModal(){
+  const existing = document.getElementById('contact-author-overlay');
+  if(existing) existing.remove();
+
+  const div = document.createElement('div');
+  div.id = 'contact-author-overlay';
+  div.className = 'fc-modal-overlay show';
+  div.innerHTML = `
+    <div class="fc-modal" style="width:360px;">
+      <div class="fc-modal-header">
+        <span class="fc-modal-title">Contact the Author</span>
+        <button class="btn" id="contact-author-close" type="button" style="flex:none;padding:2px 8px;">✕</button>
+      </div>
+      <div class="fc-modal-body">
+        <div><div class="fc-label">Your Name</div>
+          <input class="fc-input" id="contact-author-name" type="text" placeholder="Jane Doe" autocomplete="name">
+        </div>
+        <div><div class="fc-label">Your Email <span style="text-transform:none;">(optional, so I can reply)</span></div>
+          <input class="fc-input" id="contact-author-email" type="email" placeholder="jane@example.com" autocomplete="email">
+        </div>
+        <div><div class="fc-label">Message</div>
+          <textarea class="fc-input" id="contact-author-message" rows="5" placeholder="What's on your mind?" style="resize:vertical;font-family:var(--ui);"></textarea>
+        </div>
+        <span class="fc-hint">Sent directly — no email app opens on your end.</span>
+        <div class="fc-btn-row">
+          <button class="btn" id="contact-author-cancel" type="button">Cancel</button>
+          <button class="btn primary" id="contact-author-send" type="button">✉ Send</button>
+        </div>
+        <div id="contact-author-msg" class="fc-msg"></div>
+      </div>
+    </div>`;
+  document.body.appendChild(div);
+
+  const close = () => div.remove();
+  div.querySelector('#contact-author-close').addEventListener('click', close);
+  div.querySelector('#contact-author-cancel').addEventListener('click', close);
+  div.addEventListener('click', e => { if(e.target === div) close(); });
+
+  div.querySelector('#contact-author-send').addEventListener('click', async () => {
+    const name = div.querySelector('#contact-author-name').value.trim();
+    const email = div.querySelector('#contact-author-email').value.trim();
+    const message = div.querySelector('#contact-author-message').value.trim();
+    const msgEl = div.querySelector('#contact-author-msg');
+    const sendBtn = div.querySelector('#contact-author-send');
+
+    if(!name || !message){
+      msgEl.textContent = 'Please enter your name and a message.';
+      msgEl.className = 'fc-msg err';
+      return;
+    }
+
+    sendBtn.disabled = true;
+    msgEl.textContent = 'Sending…';
+    msgEl.className = 'fc-msg';
+
+    try{
+      const resp = await fetch(CONTACT_FORM_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({
+          name, email: email || '(not provided)', message,
+          _subject: `MapLite — message from ${name}`,
+        }),
+      });
+      if(!resp.ok) throw new Error('Request failed (' + resp.status + ')');
+      const data = await resp.json().catch(() => ({}));
+
+      // FormSubmit returns HTTP 200 even when it hasn't actually delivered
+      // anything yet — e.g. the very first message to a not-yet-activated
+      // address comes back {success:"false", message:"...needs Activation..."}.
+      if(String(data.success) === 'false'){
+        msgEl.textContent = /activation/i.test(data.message || '')
+          ? 'Almost there — this address needs a one-time activation. Once that\'s done, sends will go through instantly.'
+          : (data.message || 'Could not deliver the message — please try again.');
+        msgEl.className = 'fc-msg err';
+        return;
+      }
+
+      msgEl.textContent = 'Message sent — thank you!';
+      msgEl.className = 'fc-msg ok';
+      div.querySelector('#contact-author-name').value = '';
+      div.querySelector('#contact-author-email').value = '';
+      div.querySelector('#contact-author-message').value = '';
+      setTimeout(close, 1800);
+    }catch(err){
+      msgEl.textContent = 'Could not send — please try again in a moment.';
+      msgEl.className = 'fc-msg err';
+      console.error('[contact author] send failed:', err);
+    }finally{
+      sendBtn.disabled = false;
+    }
+  });
+}
+
+document.getElementById('status-contact-author')?.addEventListener('click', showContactAuthorModal);

@@ -399,6 +399,15 @@ body.resizing-panel{-webkit-user-select:none;user-select:none;cursor:col-resize;
 #crs-picker{position:relative;}
 #status-crs{background:none;border:none;color:rgb(230, 224, 224);cursor:pointer;font-size:12px;padding:0;font-family:var(--mono);white-space:nowrap;}
 #status-crs:hover{color:var(--text);}
+
+/* ---------- Contact Author (status bar) ---------- */
+#status-contact-author{
+  background:none;border:none;color:rgb(173, 168, 168);cursor:pointer;
+  font-size:13px;font-family:var(--ui);white-space:nowrap;padding:2px 8px;
+  border:0.25px solid rgb(173, 163, 163);
+  border-radius:3px;
+}
+#status-contact-author:hover{background:rgb(5, 59, 141); color:white;}
 #crs-dropdown{
   position:absolute;bottom:calc(100% + 8px);right:0;
   background:var(--bg-panel);border:1px solid var(--border);border-radius:6px;
@@ -629,6 +638,8 @@ input[type=file]{display:none;}
   background:rgba(0,0,0,0.18);border-radius:4px;padding:6px 8px;
 }
 .fc-msg{ font-size:11.5px;margin-top:2px; }
+.fc-msg.ok{ color:var(--ok); }
+.fc-msg.err{ color:var(--danger); }
 .fc-stats-grid{
   display:grid;grid-template-columns:1fr 1fr;gap:4px 14px;font-size:11.5px;
 }
