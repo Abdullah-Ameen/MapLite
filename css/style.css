@@ -403,7 +403,7 @@ body.resizing-panel{-webkit-user-select:none;user-select:none;cursor:col-resize;
 /* ---------- Contact Author (status bar) ---------- */
 #status-contact-author{
   background:none;border:none;color:rgb(173, 168, 168);cursor:pointer;
-  font-size:13px;font-family:var(--ui);white-space:nowrap;padding:2px 8px;
+  font-size:12px;font-family:var(--ui);white-space:nowrap;padding:2px 4px;
   border:0.25px solid rgb(173, 163, 163);
   border-radius:3px;
 }

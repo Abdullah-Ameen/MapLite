@@ -6392,13 +6392,11 @@ async function convertGdbFolderToGpkg(fileList, onProgress){
 
 /* ── Contact Author (status bar) ──────────────────────────────────────
    No backend on this static site, so submissions go straight to
-   FormSubmit.co's AJAX endpoint, which emails CONTACT_AUTHOR_EMAIL directly
-   — no email client opens for the visitor. FormSubmit needs no signup/API
-   key, but the very first message ever sent to a given address triggers a
-   one-time confirmation email that address's owner must click before
-   FormSubmit will actually forward anything after that. */
-const CONTACT_AUTHOR_EMAIL = 'abdullah.ameenn@gmail.com';
-const CONTACT_FORM_ENDPOINT = `https://formsubmit.co/ajax/${CONTACT_AUTHOR_EMAIL}`;
+   Formspree's AJAX endpoint, which emails the form owner directly — no
+   email client opens for the visitor. Formspree requires a form to be
+   created at https://formspree.io/forms first; replace YOUR_FORM_ID below
+   with the ID from that form's endpoint URL (https://formspree.io/f/XXXXXXX). */
+const CONTACT_FORM_ENDPOINT = 'https://formspree.io/f/mnjkkjrj';
 
 function showContactAuthorModal(){
   const existing = document.getElementById('contact-author-overlay');
@@ -6464,16 +6462,11 @@ function showContactAuthorModal(){
           _subject: `MapLite — message from ${name}`,
         }),
       });
-      if(!resp.ok) throw new Error('Request failed (' + resp.status + ')');
       const data = await resp.json().catch(() => ({}));
 
-      // FormSubmit returns HTTP 200 even when it hasn't actually delivered
-      // anything yet — e.g. the very first message to a not-yet-activated
-      // address comes back {success:"false", message:"...needs Activation..."}.
-      if(String(data.success) === 'false'){
-        msgEl.textContent = /activation/i.test(data.message || '')
-          ? 'Almost there — this address needs a one-time activation. Once that\'s done, sends will go through instantly.'
-          : (data.message || 'Could not deliver the message — please try again.');
+      if(!resp.ok){
+        const detail = Array.isArray(data.errors) ? data.errors.map(e => e.message).join(', ') : data.error;
+        msgEl.textContent = detail || 'Could not deliver the message — please try again.';
         msgEl.className = 'fc-msg err';
         return;
       }
