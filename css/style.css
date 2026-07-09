@@ -43,25 +43,23 @@ html,body{margin:0;height:100%;background:var(--bg-app);color:var(--text);font-f
 }
 .ribbon-brand{
   display:flex;align-items:center;gap:6px;padding:2px 12px 2px 4px;
-  margin-right:6px;border-right:1px solid rgba(255,255,255,0.08);
+  margin-right:3px;border-right:1px solid rgba(255,255,255,0.08);
   font-size:15px;font-weight:600;color:var(--text);-webkit-user-select:none;user-select:none;
 }
-.ribbon-brand img{height:26px;width:auto;display:block; box-shadow: 0.21px 0.25px 5px 1px #FFF1CC;
-border:0.5px solid white;
-margin-bottom:2px;}
+.ribbon-brand img{height:26px;width:auto;display:block; margin-bottom:px;}
 .ribbon-tab.active{background:var(--bg-ribbon);color:var(--text);font-weight:600;}
 .ribbon-tab:hover:not(.active){background:rgba(255,255,255,0.04);color:var(--text);}
 
-.ribbon-body{display:none;padding:6px 10px;gap:14px;align-items:stretch;overflow-x:auto;}
+.ribbon-body{display:none;padding:6px 10px;gap:6px;align-items:stretch;overflow-x:auto;}
 .ribbon-body::-webkit-scrollbar{height:3px;}
 .ribbon-body::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.18);border-radius:2px;}
 .ribbon-body::-webkit-scrollbar-track{background:transparent;}
 .ribbon-body.show{display:flex;}
 
-.rgroup{display:flex;flex-direction:column;align-items:center;padding:2px 5px;border-right:1px solid rgba(255,255,255,0.08);flex:0 0 auto;}
+.rgroup{display:flex;flex-direction:column;align-items:center;padding:2px 3px;border-right:1px solid rgba(255,255,255,0.08);flex:0 0 auto;}
 .rgroup:last-child{border-right:none;}
-.rgroup-push-right{margin-left:auto;margin-right:80px;}
-.rgroup-buttons{display:flex;gap:4px;flex:1;align-items:center;flex-wrap:nowrap;}
+.rgroup-push-right{margin-left:auto;margin-right:16px;}
+.rgroup-buttons{display:flex;gap:3px;flex:1;align-items:center;flex-wrap:nowrap;}
 .rgroup-label{font-size:10px;color:rgb(202, 194, 194);margin-top:4px;letter-spacing:.02em;white-space:nowrap;
 border-top:1px solid rgba(155, 150, 150, 0.88);}
 
@@ -72,23 +70,119 @@ border-top:1px solid rgba(155, 150, 150, 0.88);}
   white-space:nowrap;transition:width .15s,height .15s; font-size:12px;
 }
 .rbtn-text{ font-size:14px;}
-.rbtn svg{width:18px;height:18px;stroke:var(--text);fill:none;stroke-width:1.6;}
+.rbtn svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.6;}
 .rbtn:hover{background:rgba(255,255,255,0.08);border-color:rgba(255,255,255,0.1);}
 .rbtn.active{background:var(--accent-soft);border-color:var(--accent);color:#cfe9fb;}
+#tab-map .rbtn[data-tool="edit-feature"] svg{width:17px;height:17px;}
 .rbtn.active svg{stroke:#cfe9fb;}
+
+/* Ribbon icon colors — grouped by function so the ribbon reads as
+   organized color families rather than 40 arbitrary hues. Kept at
+   high lightness to match the brightness of the plain-white icons
+   they replace. :not(.active) so the active-tool highlight (above)
+   always wins over the thematic color. Buttons already converted to
+   <img> (Pan, Basemap, Save, Open on the Map tab) have no <svg> here
+   and are untouched. */
+#tab-map .rbtn[data-action="zoomIn"]:not(.active) svg,
+#tab-map .rbtn[data-action="zoomOut"]:not(.active) svg,
+#tab-map .rbtn[data-action="fullExtent"]:not(.active) svg,
+#tab-map .rbtn[data-action="gotoToggle"]:not(.active) svg,
+#tab-view .rbtn[data-action="paneContents"]:not(.active) svg,
+#tab-view .rbtn[data-action="paneCatalog"]:not(.active) svg,
+#tab-view .rbtn[data-action="paneAttributes"]:not(.active) svg,
+#tab-view .rbtn[data-action="paneGeoprocessing"]:not(.active) svg{
+  color:hsl(202,70%,72%);
+}
+
+#create-feat-trigger:not(.active) svg,
+#tab-map .rbtn[data-tool="edit-feature"]:not(.active) svg,
+#tab-edit .rbtn[data-tool="move-feature"]:not(.active) svg,
+#tab-edit .rbtn[data-action="explodeSelected"]:not(.active) svg{
+  color:hsl(36,78%,68%);
+}
+
+#sel-menu-trigger:not(.active) svg,
+#tab-map .rbtn[data-action="clearSelection"]:not(.active) svg{
+  color:hsl(268,62%,78%);
+}
+
+#tab-map .rbtn[data-tool="measure-dist"]:not(.active) svg,
+#tab-map .rbtn[data-tool="measure-area"]:not(.active) svg,
+#tab-map .rbtn[data-action="clearMeasure"]:not(.active) svg{
+  color:hsl(156,55%,66%);
+}
+
+#bookmarks-menu-trigger:not(.active) svg{
+  color:hsl(46,80%,68%);
+}
+
+#btn-add-geojson:not(.active) svg{
+  color:#fff;
+}
+
+#tab-analysis .rbtn[data-gp="buffer"]:not(.active) svg,
+#tab-analysis .rbtn[data-gp="near"]:not(.active) svg{
+  color:hsl(350,68%,76%);
+}
+
+#tab-analysis .rbtn[data-gp="clip"]:not(.active) svg,
+#tab-analysis .rbtn[data-gp="erase"]:not(.active) svg,
+#tab-edit .rbtn[data-gp="erase"]:not(.active) svg{
+  color:hsl(305,55%,76%);
+}
+
+#tab-analysis .rbtn[data-gp="intersect"]:not(.active) svg,
+#tab-analysis .rbtn[data-gp="union"]:not(.active) svg,
+#tab-analysis .rbtn[data-gp="merge"]:not(.active) svg,
+#tab-edit .rbtn[data-gp="merge"]:not(.active) svg,
+#tab-analysis .rbtn[data-gp="spatialjoin"]:not(.active) svg{
+  color:hsl(178,55%,66%);
+}
+
+#tab-analysis .rbtn[data-gp="dissolve"]:not(.active) svg,
+#tab-analysis .rbtn[data-gp="centroid"]:not(.active) svg,
+#tab-analysis .rbtn[data-gp="convexhull"]:not(.active) svg{
+  color:hsl(226,68%,80%);
+}
+
+#tab-analysis .rbtn[data-gp="routeanalysis"]:not(.active) svg{
+  color:hsl(24,75%,72%);
+}
+
+#tab-raster .rbtn[data-gp="hillshade"]:not(.active) svg{
+  color:hsl(30,55%,66%);
+}
+#tab-raster .rbtn[data-gp="slope"]:not(.active) svg{
+  color:hsl(14,70%,68%);
+}
+#tab-raster .rbtn[data-gp="ndvi"]:not(.active) svg{
+  color:hsl(122,45%,66%);
+}
+#tab-raster .rbtn[data-gp="elevprofile"]:not(.active) svg{
+  color:hsl(200,60%,70%);
+}
+
+#tab-view .rbtn[data-action="exportPrint"]:not(.active) svg{
+  color:hsl(338,60%,78%);
+}
+#tab-view .rbtn[data-tool="export-geotiff-rect"]:not(.active) svg{
+  color:hsl(190,60%,72%);
+}
 
 #btn-add-geojson {
   flex: 0 0 auto;  /* stops flex from controlling the width */
-  width: 80px;
-  height: 45px;    /* now your width actually works */
+  width: 75px;
+  height: 42px;    /* now your width actually works */
   background:rgba(6, 27, 218, 0.897);
-  box-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+  box-shadow: 1px 1px 1px rgba(0, 0, 0, 0.8);
   font-style: bold;
-  border: 0.2px solid rgb(156, 156, 150);
+  border: 0.5px solid rgb(156, 156, 150);
 }
 
 #btn-add-geojson:hover{
-  background:rgb(90, 2, 24);
+  background:rgba(255,255,255,0.08);
+  color:white;
+  border: 0.2px solid rgb(255, 255, 255);
   box-shadow: 1px 1px 2px rgba(0, 0, 0, 1);
 }
 /* Compact ribbon mode — toggled by ResizeObserver when ribbon overflows */
@@ -96,7 +190,7 @@ border-top:1px solid rgba(155, 150, 150, 0.88);}
 #ribbon.ribbon-compact .rgroup{padding:2px 6px;}
 #ribbon.ribbon-compact .rgroup-label{display:none;}
 #ribbon.ribbon-compact .rbtn{width:34px;height:34px;gap:0;font-size:0;}
-#ribbon.ribbon-compact .rbtn svg{width:20px;height:20px;}
+#ribbon.ribbon-compact .rbtn svg{width:23px;height:23px;}
 
 /* ---------- Main layout ---------- */
 #main{flex:1 1 auto;display:flex;min-height:0;}
@@ -247,7 +341,7 @@ body.resizing-panel{-webkit-user-select:none;user-select:none;cursor:col-resize;
 
 #search-box{
   position:absolute;top:12px;left:12px;z-index:500;width:300px;
-  background:var(--bg-panel);border:1px solid var(--border);border-radius:6px;
+  background:rgba(83, 82, 82, 0.75);border:1px solid var(--border);border-radius:6px;
   box-shadow:1px 2px 8px rgba(0,0,0,0.4);overflow:hidden;
   border:1px solid white;
   width:220px;
@@ -276,13 +370,16 @@ body.resizing-panel{-webkit-user-select:none;user-select:none;cursor:col-resize;
   border-radius:4px;padding:7px 8px;font-size:12px;
 }
 
-/* ---------- Create Feature + Selection tool dropdowns ---------- */
+/* ---------- Create Feature + Selection tool + Save-as + Bookmarks dropdowns ---------- */
 #create-feat-menu,
-#sel-tool-menu{
+#sel-tool-menu,
+#save-format-menu,
+#bookmarks-menu{
   position:fixed;z-index:2000;display:none;
   background:var(--bg-panel);border:1px solid var(--border);border-radius:6px;
-  box-shadow:0 4px 16px rgba(0,0,0,0.5);padding:4px;min-width:210px;
+  box-shadow:0 4px 16px rgba(0,0,0,0.5);padding:4px;min-width:210px;max-width:280px;
 }
+#bookmarks-menu-list{max-height:260px;overflow-y:auto;}
 .sel-menu-item{
   display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:4px;
   font-size:12.5px;color:var(--text-dim);cursor:pointer;
@@ -296,6 +393,11 @@ body.resizing-panel{-webkit-user-select:none;user-select:none;cursor:col-resize;
   border-radius:3px;padding:1px 5px;color:var(--text-faint);
 }
 .sel-menu-sep{height:1px;background:var(--border);margin:3px 0;}
+.layer-del{
+  background:none;border:none;color:var(--text-faint);cursor:pointer;
+  font-size:14px;line-height:1;padding:2px 5px;border-radius:3px;flex:0 0 auto;
+}
+.layer-del:hover{color:var(--danger);background:rgba(255,255,255,0.08);}
 
 /* ---------- Edit mode banner (shown in Attributes pane) ---------- */
 #edit-mode-banner{
@@ -327,6 +429,28 @@ body.resizing-panel{-webkit-user-select:none;user-select:none;cursor:col-resize;
   position:absolute;bottom:34px;left:12px;z-index:500;background:var(--bg-panel);
   border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-family:var(--mono);
   font-size:12px;display:none;box-shadow:0 4px 14px rgba(0,0,0,0.4);
+}
+
+#georef-banner{
+  position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:900;
+  background:var(--bg-panel);border:1px solid var(--accent);border-radius:7px;
+  padding:9px 12px;font-size:12.5px;color:var(--text);display:none;
+  box-shadow:0 4px 16px rgba(0,0,0,0.5);align-items:center;gap:10px;
+  white-space:nowrap;
+}
+#georef-banner.show{display:flex;}
+#georef-banner .gr-btn{
+  background:rgba(255,255,255,0.08);border:1px solid var(--border);color:var(--text);
+  border-radius:4px;padding:5px 10px;font-size:11.5px;cursor:pointer;
+}
+#georef-banner .gr-btn:hover{background:rgba(255,255,255,0.15);}
+#georef-banner .gr-btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;}
+#georef-banner .gr-btn.primary:hover{background:#2f8fc4;}
+#georef-banner .gr-btn:disabled{opacity:.4;cursor:not-allowed;}
+.georef-marker-label{
+  background:rgba(0,0,0,0.75);color:#fff;border-radius:50%;
+  width:20px;height:20px;display:flex;align-items:center;justify-content:center;
+  font-size:11px;font-weight:700;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5);
 }
 
 /* ---------- Layer context menu ---------- */
@@ -1083,7 +1207,7 @@ input[type=file]{display:none;}
 
   /* Compact ribbon buttons are a bit small for touch — bump back up slightly */
   #ribbon.ribbon-compact .rbtn{ width:42px; height:42px; }
-  #ribbon.ribbon-compact .rbtn svg{ width:22px; height:22px; }
+  #ribbon.ribbon-compact .rbtn svg{ width:25px; height:25px; }
 
   /* Floating widgets: avoid overlap on narrow viewports */
   #search-box{ width:min(55vw, 220px); }

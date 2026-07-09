@@ -354,6 +354,7 @@ function openLayerContextMenu(id, x, y){
     <div class="ctx-sep"></div>`;
   menu.innerHTML = `
     <div class="ctx-item" data-ctx="zoomTo">🔍 Zoom To Layer</div>
+    <div class="ctx-item" data-ctx="georeference">🧭 Georeference…</div>
     ${vectorOnlyItems}
     <div class="ctx-item${layerIdx < layerIds.length - 1 ? '' : ' disabled'}" data-ctx="moveUp">⬆️ Move Up</div>
     <div class="ctx-item${layerIdx > 0 ? '' : ' disabled'}" data-ctx="moveDown">⬇️ Move Down</div>
@@ -393,6 +394,7 @@ function handleLayerContextAction(action, id){
       document.getElementById('table-dock').classList.add('show');
       refreshTable();
       break;
+    case 'georeference': startGeoreference(id); break;
     case 'symbology': (lyr.rasterRender ? openRasterSymbologyPopover(id) : openSymbologyPopover(id)); break;
     case 'query': openQueryPopover(id); break;
     case 'popup': openPopupConfigPopover(id); break;
@@ -409,6 +411,265 @@ function handleLayerContextAction(action, id){
     case 'moveUp': moveLayerUp(id); break;
     case 'moveDown': moveLayerDown(id); break;
   }
+}
+
+/* ── Georeferencing ────────────────────────────────────────────────────
+   Pick N>=2 control points on the layer's current (wrong) geometry, then
+   click where each should really be. 2 points solve an exact similarity
+   transform (translate + uniform scale + rotation) — the classic 2-point
+   "shift/rotate/scale" every desktop GIS ships. 3+ points solve a
+   least-squares-fit general affine (independent x/y scale + shear),
+   which improves accuracy as you add more points across the drawing.
+   This is exactly the situation CAD imports (.dxf/.dwg) land in, since
+   those carry local drawing units, not real-world coordinates — but it
+   works on any vector layer or raster (GeoTIFF, or a Hillshade/Slope/
+   NDVI output). Vector output is a new, non-destructive layer with every
+   coordinate transformed; raster output is a new, repositioned/rescaled
+   copy of the image (rotation/shear isn't applied to raster pixels —
+   only to vector geometry — so for a rotated scan, georeference a traced
+   vector layer instead, or expect an axis-aligned best fit). */
+let georefState = null; // { layerId, points:[{src,dst}], stage:'source'|'dest', markersLayer }
+
+function startGeoreference(layerId){
+  const lyr = layers[layerId];
+  if(!lyr) return;
+  if(lyr.type === 'raster' && !getLayerGeoraster(lyr) && !(lyr.leafletLayer instanceof L.ImageOverlay)){
+    alert('This raster type can\'t be georeferenced (only GeoTIFF imports and Hillshade/Slope/NDVI/Elevation-derived outputs are supported).');
+    return;
+  }
+  if(lyr.type !== 'raster' && !lyr.allFeatures.length){ alert(lyr.name + ' has no features to georeference.'); return; }
+  if(georefState) cancelGeoreference();
+
+  setTool('pan'); // avoid a draw/select tool intercepting the control-point clicks
+  georefState = { layerId, points: [], stage: 'source', markersLayer: L.layerGroup().addTo(map) };
+  map.getContainer().style.cursor = 'crosshair';
+  map.on('click', onGeorefMapClick);
+  renderGeorefBanner();
+}
+
+function georefMarkerIcon(label, color){
+  return L.divIcon({
+    className: '',
+    html: `<div class="georef-marker-label" style="background:${color}">${label}</div>`,
+    iconSize: [20, 20], iconAnchor: [10, 10]
+  });
+}
+
+function onGeorefMapClick(e){
+  if(!georefState) return;
+  const st = georefState;
+  if(st.stage === 'source'){
+    st.points.push({ src: e.latlng, dst: null });
+    L.marker(e.latlng, { icon: georefMarkerIcon(String(st.points.length), '#e0635a') }).addTo(st.markersLayer);
+    st.stage = 'dest';
+  } else if(st.stage === 'dest'){
+    st.points[st.points.length - 1].dst = e.latlng;
+    L.marker(e.latlng, { icon: georefMarkerIcon(String(st.points.length), '#5ec98f') }).addTo(st.markersLayer);
+    st.stage = 'source'; // always loop back so more pairs can be added
+  }
+  renderGeorefBanner();
+}
+
+function georefCompletedPairs(st){
+  return st.points.filter(p => p.dst != null);
+}
+
+function renderGeorefBanner(){
+  const banner = document.getElementById('georef-banner');
+  if(!banner || !georefState) return;
+  const st = georefState;
+  const lyr = layers[st.layerId];
+  const n = st.points.length;
+  const completed = georefCompletedPairs(st).length;
+  let msg;
+  if(st.stage === 'dest') msg = `Now click where point ${n} should actually be on the map.`;
+  else if(completed === 0) msg = `Georeferencing <strong>${escapeHtml(lyr.name)}</strong> — click a point on the layer's current (misplaced) location.`;
+  else msg = `${completed} point pair${completed === 1 ? '' : 's'} placed${completed < 2 ? ' (need at least 2)' : ''} — click another to improve accuracy, or Apply.`;
+
+  banner.classList.add('show');
+  banner.innerHTML = `
+    <span>🧭</span>
+    <span>${msg}</span>
+    <button type="button" class="gr-btn" id="georef-undo"${n === 0 ? ' disabled' : ''}>Undo</button>
+    <button type="button" class="gr-btn" id="georef-cancel">Cancel</button>
+    <button type="button" class="gr-btn primary" id="georef-apply"${(st.stage !== 'source' || completed < 2) ? ' disabled' : ''}>Apply (${completed})</button>
+  `;
+  document.getElementById('georef-undo').addEventListener('click', undoLastGeorefPoint);
+  document.getElementById('georef-cancel').addEventListener('click', cancelGeoreference);
+  document.getElementById('georef-apply').addEventListener('click', applyGeoreference);
+}
+
+function undoLastGeorefPoint(){
+  const st = georefState;
+  if(!st || st.points.length === 0) return;
+  const markers = st.markersLayer.getLayers();
+  if(markers.length) st.markersLayer.removeLayer(markers[markers.length - 1]);
+
+  const last = st.points[st.points.length - 1];
+  if(last.dst != null){
+    last.dst = null;
+    st.stage = 'dest';
+  } else {
+    st.points.pop();
+    st.stage = 'source';
+  }
+  renderGeorefBanner();
+}
+
+function cancelGeoreference(){
+  if(!georefState) return;
+  map.off('click', onGeorefMapClick);
+  map.removeLayer(georefState.markersLayer);
+  map.getContainer().style.cursor = '';
+  const banner = document.getElementById('georef-banner');
+  if(banner){ banner.classList.remove('show'); banner.innerHTML = ''; }
+  georefState = null;
+}
+
+// Solves dst = a*src + b (a, b complex, i.e. rotation+scale and translation)
+// from exactly two point pairs, treating lng/lat as a flat plane — the same
+// simplification classic desktop-GIS 2-point georeferencing tools use, since
+// the source drawing has no real spatial reference to begin with.
+function computeSimilarityTransform(src1, src2, dst1, dst2){
+  const sdx = src2.lng - src1.lng, sdy = src2.lat - src1.lat;
+  const ddx = dst2.lng - dst1.lng, ddy = dst2.lat - dst1.lat;
+  const denom = sdx*sdx + sdy*sdy;
+  if(denom === 0) return null; // the two source points coincide
+  const aRe = (ddx*sdx + ddy*sdy) / denom;
+  const aIm = (ddy*sdx - ddx*sdy) / denom;
+  const bRe = dst1.lng - (aRe*src1.lng - aIm*src1.lat);
+  const bIm = dst1.lat - (aRe*src1.lat + aIm*src1.lng);
+  return (lng, lat) => [aRe*lng - aIm*lat + bRe, aRe*lat + aIm*lng + bIm];
+}
+
+// Solves a 3x3 linear system via Cramer's rule — used twice below (once for
+// the x-output regression, once for y-output) to least-squares fit a
+// general 6-parameter affine from 3+ point pairs.
+function solveLinear3(M, rhs){
+  const det3 = m => m[0][0]*(m[1][1]*m[2][2]-m[1][2]*m[2][1])
+                   - m[0][1]*(m[1][0]*m[2][2]-m[1][2]*m[2][0])
+                   + m[0][2]*(m[1][0]*m[2][1]-m[1][1]*m[2][0]);
+  const D = det3(M);
+  if(Math.abs(D) < 1e-12) return null; // degenerate (e.g. all points collinear)
+  const withCol = (col, vals) => M.map((row, i) => row.map((v, j) => j === col ? vals[i] : v));
+  return [det3(withCol(0, rhs)) / D, det3(withCol(1, rhs)) / D, det3(withCol(2, rhs)) / D];
+}
+
+// General affine (translate + independent x/y scale + shear + rotation),
+// least-squares fit from N>=3 point pairs — exact when N===3.
+function computeAffineTransformLSQ(pairs){
+  let Sxx=0, Sxy=0, Sx=0, Syy=0, Sy=0, SxU=0, SyU=0, SU=0, SxV=0, SyV=0, SV=0;
+  pairs.forEach(p => {
+    const x = p.src.lng, y = p.src.lat, u = p.dst.lng, v = p.dst.lat;
+    Sxx += x*x; Sxy += x*y; Sx += x; Syy += y*y; Sy += y;
+    SxU += x*u; SyU += y*u; SU += u;
+    SxV += x*v; SyV += y*v; SV += v;
+  });
+  const M = [[Sxx,Sxy,Sx],[Sxy,Syy,Sy],[Sx,Sy,pairs.length]];
+  const abe = solveLinear3(M, [SxU,SyU,SU]);
+  const cdf = solveLinear3(M, [SxV,SyV,SV]);
+  if(!abe || !cdf) return null; // degenerate (e.g. all source points collinear)
+  const [a,b,e] = abe, [c,d,f] = cdf;
+  return (lng, lat) => [a*lng + b*lat + e, c*lng + d*lat + f];
+}
+
+// Renders a georaster's first band (or first 3 bands as RGB for imagery)
+// into a flat canvas — the same "build one canvas from the pixel grid"
+// approach Hillshade/Slope/NDVI already use, reused here so a georeferenced
+// raster copy doesn't depend on GeoRasterLayer's internal tiling.
+function flattenGeorasterToCanvas(gr){
+  const { width, height, noDataValue } = gr;
+  const bandCount = gr.numberOfRasterBands || gr.values.length;
+  const canvas = document.createElement('canvas');
+  canvas.width = width; canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(width, height);
+  const stretch = i => {
+    const min = gr.mins ? gr.mins[i] : null, max = gr.maxs ? gr.maxs[i] : null;
+    return (min != null && max != null && max > min) ? { min, max } : null;
+  };
+  if(bandCount >= 3){
+    const bands = [0,1,2].map(i => gr.values[i]);
+    const ranges = [0,1,2].map(stretch);
+    for(let r = 0; r < height; r++) for(let c = 0; c < width; c++){
+      const p = (r*width+c)*4;
+      const vals = bands.map(b => b[r][c]);
+      if(vals.some(v => v == null || v === noDataValue || Number.isNaN(v))){ img.data[p+3] = 0; continue; }
+      [0,1,2].forEach((ch,i) => {
+        const rg = ranges[i];
+        img.data[p+ch] = rg ? Math.round(255 * Math.max(0, Math.min(1, (vals[i]-rg.min)/(rg.max-rg.min)))) : Math.max(0, Math.min(255, Math.round(vals[i])));
+      });
+      img.data[p+3] = 255;
+    }
+  } else {
+    const band = gr.values[0];
+    const rg = stretch(0);
+    for(let r = 0; r < height; r++) for(let c = 0; c < width; c++){
+      const p = (r*width+c)*4;
+      const v = band[r][c];
+      if(v == null || v === noDataValue || Number.isNaN(v)){ img.data[p+3] = 0; continue; }
+      const gray = rg ? Math.round(255 * Math.max(0, Math.min(1, (v-rg.min)/(rg.max-rg.min)))) : Math.max(0, Math.min(255, Math.round(v)));
+      img.data[p] = gray; img.data[p+1] = gray; img.data[p+2] = gray; img.data[p+3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return canvas;
+}
+
+// Repositions/rescales a raster layer to the new bounding box implied by the
+// fitted transform. Only translation + independent x/y scale carry over —
+// any rotation/shear component of the fit is dropped, since a Leaflet
+// ImageOverlay can only be placed at an axis-aligned lat/lng box.
+function applyRasterGeoreference(lyr, transform){
+  const srcBounds = lyr.leafletLayer.getBounds();
+  const corners = [
+    [srcBounds.getWest(), srcBounds.getSouth()], [srcBounds.getWest(), srcBounds.getNorth()],
+    [srcBounds.getEast(), srcBounds.getSouth()], [srcBounds.getEast(), srcBounds.getNorth()],
+  ].map(([lng,lat]) => transform(lng,lat));
+  const lngs = corners.map(c => c[0]), lats = corners.map(c => c[1]);
+  const newBounds = L.latLngBounds([[Math.min(...lats), Math.min(...lngs)], [Math.max(...lats), Math.max(...lngs)]]);
+
+  const gr = getLayerGeoraster(lyr);
+  let imageUrl;
+  if(lyr.leafletLayer instanceof L.ImageOverlay){
+    imageUrl = lyr.leafletLayer._url; // already a flat image (Hillshade/Slope/NDVI output) — reuse as-is
+  } else if(gr){
+    imageUrl = flattenGeorasterToCanvas(gr).toDataURL(); // tiled GeoRasterLayer — flatten once
+  } else {
+    return null;
+  }
+  const overlay = L.imageOverlay(imageUrl, newBounds, { opacity: lyr.opacity ?? 1 });
+  if(gr) overlay.georaster = gr; // pixel grid is unchanged, only the display bounds moved — keeps Hillshade/Elevation Profile/etc. usable on the copy
+  const id = addLayerToRegistry(`${lyr.name} (georeferenced)`, overlay, null, 'raster');
+  if(lyr.rasterRender) layers[id].rasterRender = Object.assign({}, lyr.rasterRender);
+  return id;
+}
+
+function applyGeoreference(){
+  const st = georefState;
+  if(!st) return;
+  const pairs = georefCompletedPairs(st);
+  if(pairs.length < 2) return;
+  const transform = pairs.length === 2
+    ? computeSimilarityTransform(pairs[0].src, pairs[1].src, pairs[0].dst, pairs[1].dst)
+    : computeAffineTransformLSQ(pairs);
+  if(!transform){ alert('Those control points are degenerate (identical or all in a line) — undo and pick points that aren\'t collinear.'); return; }
+
+  const lyr = layers[st.layerId];
+  if(lyr.type === 'raster'){
+    const id = applyRasterGeoreference(lyr, transform);
+    if(id == null){ alert('This raster could not be read for georeferencing.'); return; }
+    appToast(`Created "${layers[id].name}" — position and scale applied (rotation isn't applied to raster pixels; georeference a vector layer for that). Original is untouched.`, false, 8000);
+  } else {
+    const geojson = JSON.parse(JSON.stringify(lyr.leafletLayer.toGeoJSON()));
+    turf.coordEach(geojson, coord => {
+      const [x, y] = transform(coord[0], coord[1]);
+      coord[0] = x; coord[1] = y;
+    });
+    loadGeoJSON(`${lyr.name} (georeferenced)`, geojson, lyr.color);
+    appToast(`Created "${lyr.name} (georeferenced)" from ${pairs.length} control point${pairs.length === 1 ? '' : 's'} — the original layer is untouched; re-run Georeference on it again if the alignment needs adjusting.`, false, 7000);
+  }
+  cancelGeoreference();
 }
 
 // ---------- Layer popover (Symbology / Definition Query / Properties) ----------
@@ -670,6 +931,10 @@ function recolorRasterLayer(lyr, minColor, maxColor){
   lyr.leafletLayer.setUrl(canvas.toDataURL());
   rr.minColor = minColor;
   rr.maxColor = maxColor;
+  // The URL just changed to a fresh data: URL — drop any cached autosave
+  // blob (see serializeLayerForAutosave) so the next autosave re-derives
+  // it from *this* new image instead of persisting a stale recolor.
+  delete lyr._sourceImageBlob;
 }
 
 function openRasterSymbologyPopover(id){
@@ -1479,7 +1744,8 @@ const TOOL_LABELS = {
   select:'Identify (I)', 'select-rect':'Select by Rectangle (R)',
   'select-lasso':'Lasso Select (L)',
   'measure-dist':'Measure Distance', 'measure-area':'Measure Area',
-  'edit-feature':'Edit Features', 'move-feature':'Move Feature'
+  'edit-feature':'Edit Features', 'move-feature':'Move Feature',
+  'export-geotiff-rect':'Draw area to export as GeoTIFF'
 };
 
 function setTool(tool){
@@ -1501,6 +1767,7 @@ function setTool(tool){
   if(tool === 'measure-area') activeDrawHandler = new L.Draw.Polygon(map, { shapeOptions: { color: '#3da7e0', weight: 2, fillOpacity: 0.15, dashArray: '6,6' }, icon: commonGuideIcon });
   if(tool === 'select-rect') activeDrawHandler = new L.Draw.Rectangle(map, { shapeOptions: { color: '#ffd54a', weight: 2, fillOpacity: 0.08 }, icon: commonGuideIcon });
   if(tool === 'select-lasso') activeDrawHandler = new L.Draw.Polygon(map, { shapeOptions: { color: '#ffd54a', weight: 2, fillOpacity: 0.08, dashArray: '4 4' }, icon: commonGuideIcon });
+  if(tool === 'export-geotiff-rect') activeDrawHandler = new L.Draw.Rectangle(map, { shapeOptions: { color: '#3da7e0', weight: 2, fillOpacity: 0.08, dashArray: '4 4' }, icon: commonGuideIcon });
   // edit-feature: no draw handler — relies on feature click via bindIdentify
   if(tool === 'edit-feature') map.getContainer().style.cursor = 'cell';
   // move-feature: no draw handler either — relies on a feature mousedown+drag in bindIdentify
@@ -1528,9 +1795,16 @@ function _onDrawCreated(e){
     handleLassoSelect(layer);
     return;
   }
+  if(currentTool === 'export-geotiff-rect'){
+    const bounds = layer.getBounds();
+    setTool('pan');
+    exportSelectedAreaAsGeoTiff(bounds);
+    return;
+  }
 
   const geoJsonFeature = layer.toGeoJSON();
   layer.feature = {
+    type:       'Feature',
     geometry:   geoJsonFeature.geometry,
     properties: { id: 'F' + (featureCounter++), type: e.layerType, created: new Date().toLocaleString() }
   };
@@ -1952,7 +2226,54 @@ async function handleAddedDataFiles(files){
     return;
   }
 
-  alert('Unsupported file selection. Add a .geojson/.json file, a zipped Shapefile (.zip), a GeoTIFF (.tif/.tiff), or select the .shp file together with its .dbf (and .prj if available).');
+  const isSingleCad = files.length === 1 && /\.(dxf|dwg)$/i.test(files[0].name);
+  if(isSingleCad){
+    await handleCadFile(files[0]);
+    return;
+  }
+
+  alert('Unsupported file selection. Add a .geojson/.json file, a zipped Shapefile (.zip), a GeoTIFF (.tif/.tiff), a CAD drawing (.dxf/.dwg), or select the .shp file together with its .dbf (and .prj if available).');
+}
+
+/* ── CAD import (.dxf / .dwg) ─────────────────────────────────────────
+   Reuses the GDAL-in-WebAssembly pipeline already loaded for GDB/Shapefile/
+   GeoPackage conversion (see loadGdalJs below). GDAL's OGR layer ships a
+   DXF driver (pure open format, always reliable) and a CAD driver
+   (libopencad, for reading .dwg — coverage varies by AutoCAD version).
+   CAD drawings carry no real-world coordinate system, just local drawing
+   units, so the imported layer lands wherever those raw units fall; the
+   map is auto-zoomed to the drawing's own extent (loadGeoJSON always does
+   this) so it's visible regardless. */
+async function handleCadFile(file){
+  const isDwg = /\.dwg$/i.test(file.name);
+  try {
+    const Gdal = await loadGdalJs(msg => appToast(msg));
+    appToast(`Reading ${file.name}…`);
+    const { datasets, errors } = await Gdal.open(file);
+    if(!datasets || !datasets.length){
+      throw new Error((errors && errors.map(e => e.message).filter(Boolean).join('; ')) || 'GDAL could not read this CAD file.');
+    }
+    const ds = datasets[0];
+    appToast('Converting CAD entities…');
+    const baseName = file.name.replace(/\.(dxf|dwg)$/i, '');
+    const output = await Gdal.ogr2ogr(ds, ['-f', 'GeoJSON'], baseName);
+    const bytes = await Gdal.getFileBytes(output);
+    try { await Gdal.close(ds); } catch(_){}
+
+    const gj = JSON.parse(new TextDecoder().decode(bytes));
+    if(!gj.features || !gj.features.length){
+      appToast('No drawable entities found in that CAD file.', true);
+      return;
+    }
+    loadGeoJSON(baseName, gj);
+    appToast(
+      `Loaded ${gj.features.length} entities from ${file.name}. CAD drawings use local drawing units, not real-world coordinates — the map zoomed to the drawing's own extent, but you'll likely need to reposition/rescale it to match the real location.`,
+      false, 9000
+    );
+  } catch(err){
+    const msg = (err && err.message) || (typeof err === 'string' ? err : 'the file could not be read.');
+    appToast(`CAD import failed${isDwg ? ' — try re-exporting as .dxf from your CAD software, DWG support varies by AutoCAD version' : ''}: ${msg}`, true);
+  }
 }
 
 /* ── GeoTIFF raster layer ─────────────────────────────────────────── */
@@ -2186,6 +2507,39 @@ function buildNdviOverlay(gr, redBandIdx, nirBandIdx){
   return canvas;
 }
 
+/* ── Raster analysis: Elevation Profile ──────────────────────────────
+   Samples a raster's first band along a line. Reuses the exact same
+   simplification Hillshade/Slope/NDVI already rely on: the raster's
+   pixel grid is stretched linearly across whatever bounds Leaflet is
+   already displaying it at (rasterLayer.getBounds()), so sampling stays
+   pixel-for-pixel consistent with what's on screen regardless of the
+   source's original CRS — no separate reprojection step needed. */
+function sampleElevationAtLatLng(gr, bounds, lat, lng){
+  const west = bounds.getWest(), east = bounds.getEast();
+  const north = bounds.getNorth(), south = bounds.getSouth();
+  if(lng < west || lng > east || lat < south || lat > north) return null;
+  const col = Math.min(gr.width - 1, Math.floor((lng - west) / (east - west) * gr.width));
+  const row = Math.min(gr.height - 1, Math.floor((north - lat) / (north - south) * gr.height));
+  const v = gr.values[0][row][col];
+  if(v == null || v === gr.noDataValue || Number.isNaN(v)) return null;
+  return v;
+}
+
+function computeElevationProfile(gr, bounds, lineFeature, numSamples){
+  numSamples = numSamples || 200;
+  const lengthKm = turf.length(lineFeature, { units: 'kilometers' });
+  if(!lengthKm || lengthKm <= 0) return null;
+  const samples = [];
+  for(let i = 0; i <= numSamples; i++){
+    const distKm = (lengthKm * i) / numSamples;
+    const pt = (i === numSamples) ? lineFeature.geometry.coordinates[lineFeature.geometry.coordinates.length - 1]
+                                   : turf.along(lineFeature, distKm, { units: 'kilometers' }).geometry.coordinates;
+    const [lng, lat] = pt;
+    samples.push({ distKm, lat, lng, elev: sampleElevationAtLatLng(gr, bounds, lat, lng) });
+  }
+  return { samples, lengthKm };
+}
+
 // Parses a Shapefile using shpjs (https://github.com/calvinmetcalf/shapefile-js), loaded via CDN.
 // Accepts either a single .zip (containing .shp/.dbf/.prj) or a loose set of files
 // the user multi-selected in the file picker (.shp required, .dbf/.prj/.shx/.cpg optional).
@@ -2269,6 +2623,56 @@ function createNewSketchLayer(name) {
   });
 })();
 
+// ---------- Save-as-format dropdown ----------
+(function(){
+  const trigger = document.getElementById('save-menu-trigger');
+  const menu    = document.getElementById('save-format-menu');
+  if(!trigger || !menu) return;
+
+  trigger.addEventListener('click', function(e){
+    e.stopPropagation();
+    if(menu.style.display === 'block'){ menu.style.display = 'none'; return; }
+    const rect = trigger.getBoundingClientRect();
+    menu.style.left    = rect.left + 'px';
+    menu.style.top     = (rect.bottom + 4) + 'px';
+    menu.style.display = 'block';
+  });
+
+  document.addEventListener('click', () => { menu.style.display = 'none'; });
+  menu.addEventListener('click', e => e.stopPropagation());
+
+  menu.querySelectorAll('.sel-menu-item[data-save]').forEach(item => {
+    item.addEventListener('click', () => {
+      menu.style.display = 'none';
+      const fmt = item.dataset.save;
+      if(fmt === 'maplite')     saveProject();
+      else if(fmt === 'arcgis') saveProjectAsShapefile();
+      else if(fmt === 'qgis')   saveProjectAsGeoPackage();
+    });
+  });
+})();
+
+// ---------- Bookmarks dropdown ----------
+(function(){
+  const trigger = document.getElementById('bookmarks-menu-trigger');
+  const menu    = document.getElementById('bookmarks-menu');
+  if(!trigger || !menu) return;
+
+  trigger.addEventListener('click', function(e){
+    e.stopPropagation();
+    if(menu.style.display === 'block'){ menu.style.display = 'none'; return; }
+    const rect = trigger.getBoundingClientRect();
+    menu.style.left    = rect.left + 'px';
+    menu.style.top     = (rect.bottom + 4) + 'px';
+    menu.style.display = 'block';
+  });
+
+  document.addEventListener('click', () => { menu.style.display = 'none'; });
+  menu.addEventListener('click', e => e.stopPropagation());
+
+  menu.querySelector('.sel-menu-item[data-action="add-bookmark"]').addEventListener('click', () => addBookmark());
+})();
+
 // ---------- Ribbon: tabs ----------
 document.querySelectorAll('.ribbon-tab').forEach(tab => {
   tab.addEventListener('click', () => {
@@ -2348,11 +2752,6 @@ function handleAction(action){
       sketchFeatureGroup.clearLayers();
       document.getElementById('measure-readout').textContent = '';
       refreshTable();
-      break;
-    case 'addBookmark': addBookmark(); break;
-    case 'showBookmarks':
-      showLeftTab('catalog');
-      document.getElementById('left-panel').classList.remove('collapsed');
       break;
     case 'toggleBasemap': document.getElementById('basemap-gallery').classList.toggle('show'); break;
     case 'toggleTable':
@@ -2532,8 +2931,6 @@ function addBookmark(){
   const c = map.getCenter();
   bookmarks.push({ name, center: [c.lat, c.lng], zoom: map.getZoom() });
   renderCatalogBookmarks();
-  showLeftTab('catalog');
-  document.getElementById('left-panel').classList.remove('collapsed');
 }
 function flyToBookmark(idx){
   const b = bookmarks[idx];
@@ -2543,20 +2940,32 @@ function deleteBookmark(idx){
   bookmarks.splice(idx, 1);
   renderCatalogBookmarks();
 }
-function renderCatalogBookmarks(){
-  const el = document.getElementById('catalog-bookmarks');
-  if(bookmarks.length === 0){
-    el.innerHTML = '<div class="cat-leaf cat-empty">No bookmarks yet</div>';
-    return;
-  }
-  el.innerHTML = bookmarks.map((b, i) =>
+function bookmarkRowsHTML(){
+  if(bookmarks.length === 0) return '<div class="cat-leaf cat-empty">No bookmarks yet</div>';
+  return bookmarks.map((b, i) =>
     `<div class="cat-leaf bookmark-item"><span data-goto="${i}">🔖 ${escapeHtml(b.name)}</span><button class="layer-del" data-bmdel="${i}" title="Delete bookmark">&times;</button></div>`
   ).join('');
-  el.querySelectorAll('[data-goto]').forEach(s => s.addEventListener('click', () => flyToBookmark(parseInt(s.dataset.goto, 10))));
+}
+function wireBookmarkRows(el, closeMenuOnGoto){
+  el.querySelectorAll('[data-goto]').forEach(s => s.addEventListener('click', () => {
+    flyToBookmark(parseInt(s.dataset.goto, 10));
+    if(closeMenuOnGoto) document.getElementById('bookmarks-menu').style.display = 'none';
+  }));
   el.querySelectorAll('[data-bmdel]').forEach(btn => btn.addEventListener('click', (ev) => {
     ev.stopPropagation();
     deleteBookmark(parseInt(btn.dataset.bmdel, 10));
   }));
+}
+function renderCatalogBookmarks(){
+  const catalogEl = document.getElementById('catalog-bookmarks');
+  catalogEl.innerHTML = bookmarkRowsHTML();
+  wireBookmarkRows(catalogEl, false);
+
+  const menuEl = document.getElementById('bookmarks-menu-list');
+  if(menuEl){
+    menuEl.innerHTML = bookmarkRowsHTML();
+    wireBookmarkRows(menuEl, true);
+  }
 }
 
 // ---------- Geoprocessing ----------
@@ -2578,6 +2987,7 @@ const GP_TOOLS = {
   hillshade:   { title: 'Hillshade', fields: ['raster','hillshadeparams'], aLabel: 'Elevation Raster', desc: 'Computes shaded relief from an elevation raster\'s first band, given a sun azimuth and altitude.' },
   slope:       { title: 'Slope', fields: ['raster','slopeparams'], aLabel: 'Elevation Raster', desc: 'Computes slope steepness (in degrees) at each cell of an elevation raster\'s first band.' },
   ndvi:        { title: 'NDVI', fields: ['raster','ndviparams'], aLabel: 'Multiband Raster', desc: 'Computes the Normalized Difference Vegetation Index from a multiband raster\'s Red and Near-Infrared bands: (NIR-Red)/(NIR+Red).' },
+  elevprofile: { title: 'Elevation Profile', fields: ['raster','linelayerb'], aLabel: 'Elevation Raster', bLabel: 'Profile Line', desc: 'Samples elevation along a line and charts distance vs. elevation. Draw a line with Create Feature → Line (or pick any existing line layer), then choose the DEM to sample.' },
   routeanalysis: { title: 'Route Analysis', fields: ['linelayer','reflayers','snaptol'], aLabel: 'Route (Line) Layer', desc: 'Splits a route line everywhere it crosses the checked reference layers. Segments inside a reference polygon are tagged "Intersecting {layer}" (combined if more than one overlaps); reference lines and points only add split points and don\'t tag a segment on their own. Each segment also gets LENGTH_M and LENGTH_MI attributes.' },
 };
 
@@ -2807,6 +3217,13 @@ function openGPTool(tool){
       <label>${cfg.aLabel}</label>
       <select id="gp-sel-a">${lineOpts || '<option value="">No line layers loaded</option>'}</select>
       <label class="gp-use-sel-label"><input type="checkbox" id="gp-use-a"> Use selection only</label>
+    </div>`;
+  }
+  if(cfg.fields.includes('linelayerb')){
+    const lineOpts = lineLayerOptionsHtml();
+    html += `<div class="gp-field">
+      <label>${cfg.bLabel}</label>
+      <select id="gp-sel-b">${lineOpts || '<option value="">No line layers loaded</option>'}</select>
     </div>`;
   }
   if(cfg.fields.includes('reflayers')){
@@ -3124,6 +3541,131 @@ function showGPResult(msg, isError, toolTitle){
   }
 }
 
+// Renders an inline SVG line chart (distance vs. elevation) into #gp-result.
+// Bypasses showGPResult's textContent-only rendering since a chart needs
+// markup, but still records a one-line summary into gpHistory like every
+// other GP tool does.
+function showElevationProfileResult(profile, rasterName, lineName, toolTitle){
+  const prog = document.getElementById('gp-progress');
+  if(prog) prog.classList.remove('show');
+  const el = document.getElementById('gp-result');
+  if(!el) return;
+
+  const { samples, lengthKm } = profile;
+  const valid = samples.filter(s => s.elev != null);
+  const minElev = Math.min(...valid.map(s => s.elev));
+  const maxElev = Math.max(...valid.map(s => s.elev));
+  let gain = 0, loss = 0;
+  for(let i = 1; i < valid.length; i++){
+    const d = valid[i].elev - valid[i-1].elev;
+    if(d > 0) gain += d; else loss += -d;
+  }
+
+  const W = 300, H = 160, padL = 40, padR = 10, padT = 10, padB = 20;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const elevRange = (maxElev - minElev) || 1;
+  const x = s => padL + (lengthKm ? (s.distKm / lengthKm) * plotW : 0);
+  const y = s => padT + (1 - (s.elev - minElev) / elevRange) * plotH;
+  const baseline = padT + plotH;
+
+  // Break into runs of consecutive valid samples so gaps (line leaves the
+  // raster's extent) don't get bridged by a straight line across them.
+  const runs = [];
+  let cur = [];
+  samples.forEach(s => {
+    if(s.elev == null){ if(cur.length) runs.push(cur); cur = []; }
+    else cur.push(s);
+  });
+  if(cur.length) runs.push(cur);
+
+  const linePaths = runs.map(run => 'M' + run.map(s => `${x(s).toFixed(1)},${y(s).toFixed(1)}`).join('L')).join(' ');
+  const fillPaths = runs.map(run => {
+    const pts = run.map(s => `${x(s).toFixed(1)},${y(s).toFixed(1)}`).join('L');
+    return `M${x(run[0]).toFixed(1)},${baseline}L${pts}L${x(run[run.length-1]).toFixed(1)},${baseline}Z`;
+  }).join(' ');
+
+  const gridLines = [minElev, (minElev+maxElev)/2, maxElev].map(v => {
+    const gy = padT + (1 - (v - minElev) / elevRange) * plotH;
+    return `<line x1="${padL}" y1="${gy.toFixed(1)}" x2="${W-padR}" y2="${gy.toFixed(1)}" stroke="var(--border)" stroke-width="1"/>
+      <text x="${padL-4}" y="${(gy+3).toFixed(1)}" text-anchor="end" font-size="8" fill="var(--text-faint)">${Math.round(v)}</text>`;
+  }).join('');
+
+  el.className = 'ok';
+  el.innerHTML = `
+    <div style="font-size:11.5px;color:var(--text-dim);margin-bottom:6px;">
+      <strong style="color:var(--text);">${escapeHtml(rasterName)}</strong> along <strong style="color:var(--text);">${escapeHtml(lineName)}</strong>
+    </div>
+    <div style="position:relative;background:var(--bg-panel-raised);border-radius:5px;padding:4px;">
+      <svg id="elevprofile-svg" viewBox="0 0 ${W} ${H}" style="width:100%;display:block;overflow:visible;cursor:crosshair;">
+        ${gridLines}
+        <path d="${fillPaths}" fill="var(--accent)" fill-opacity="0.18" stroke="none"/>
+        <path d="${linePaths}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+        <line id="elevprofile-crosshair" x1="0" y1="${padT}" x2="0" y2="${baseline}" stroke="var(--text-dim)" stroke-width="1" stroke-dasharray="2,2" style="display:none;"/>
+        <circle id="elevprofile-dot" r="2.6" fill="var(--accent)" style="display:none;"/>
+        <text x="${padL}" y="${H-6}" font-size="8" fill="var(--text-faint)">0 km</text>
+        <text x="${W-padR}" y="${H-6}" text-anchor="end" font-size="8" fill="var(--text-faint)">${lengthKm.toFixed(2)} km</text>
+        <rect id="elevprofile-hover-rect" x="${padL}" y="${padT}" width="${plotW}" height="${plotH}" fill="transparent"/>
+      </svg>
+      <div id="elevprofile-tooltip" style="position:absolute;top:4px;right:6px;font-size:10.5px;color:var(--text);background:var(--bg-panel);border:1px solid var(--border);border-radius:4px;padding:3px 7px;display:none;pointer-events:none;white-space:nowrap;"></div>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;font-size:11px;color:var(--text-dim);">
+      <span>Length: <strong style="color:var(--text);">${lengthKm.toFixed(2)} km</strong></span>
+      <span>Min: <strong style="color:var(--text);">${Math.round(minElev)}</strong></span>
+      <span>Max: <strong style="color:var(--text);">${Math.round(maxElev)}</strong></span>
+      <span>Gain: <strong style="color:var(--ok);">+${Math.round(gain)}</strong></span>
+      <span>Loss: <strong style="color:var(--danger);">-${Math.round(loss)}</strong></span>
+    </div>`;
+
+  wireElevationProfileHover(samples, { x, y, padT, baseline, W, H });
+
+  const msg = `Profiled ${lengthKm.toFixed(2)} km — elevation ${Math.round(minElev)} to ${Math.round(maxElev)}.`;
+  if(toolTitle){
+    gpHistory.unshift({ tool: toolTitle, msg, ok: true });
+    if(gpHistory.length > 10) gpHistory.pop();
+  }
+}
+
+function wireElevationProfileHover(samples, layout){
+  const svg = document.getElementById('elevprofile-svg');
+  const hoverRect = document.getElementById('elevprofile-hover-rect');
+  const crosshair = document.getElementById('elevprofile-crosshair');
+  const dot = document.getElementById('elevprofile-dot');
+  const tooltip = document.getElementById('elevprofile-tooltip');
+  if(!svg || !hoverRect) return;
+  const { x: xOf, y: yOf, padT, baseline } = layout;
+
+  function pointFromEvent(evt){
+    const pt = svg.createSVGPoint();
+    pt.x = evt.clientX; pt.y = evt.clientY;
+    const ctm = svg.getScreenCTM();
+    return ctm ? pt.matrixTransform(ctm.inverse()) : null;
+  }
+
+  hoverRect.addEventListener('mousemove', evt => {
+    const p = pointFromEvent(evt);
+    if(!p) return;
+    // Nearest sample by x position (samples are evenly spaced in distance).
+    let nearest = samples[0], best = Infinity;
+    samples.forEach(s => { const d = Math.abs(xOf(s) - p.x); if(d < best){ best = d; nearest = s; } });
+    crosshair.setAttribute('x1', xOf(nearest)); crosshair.setAttribute('x2', xOf(nearest));
+    crosshair.style.display = '';
+    if(nearest.elev != null){
+      dot.setAttribute('cx', xOf(nearest)); dot.setAttribute('cy', yOf(nearest));
+      dot.style.display = '';
+      tooltip.textContent = `${nearest.distKm.toFixed(2)} km — ${Math.round(nearest.elev)}`;
+    } else {
+      dot.style.display = 'none';
+      tooltip.textContent = `${nearest.distKm.toFixed(2)} km — no data`;
+    }
+    tooltip.style.display = '';
+  });
+  hoverRect.addEventListener('mouseleave', () => {
+    crosshair.style.display = 'none';
+    dot.style.display = 'none';
+    tooltip.style.display = 'none';
+  });
+}
+
 function startGPProgress(){
   const prog = document.getElementById('gp-progress');
   if(prog) prog.classList.add('show');
@@ -3418,6 +3960,17 @@ async function runGPTool(tool){
       const overlay = L.imageOverlay(canvas.toDataURL(), bounds, { opacity: 1 });
       addLayerToRegistry(`${layerA.name} (NDVI)`, overlay, null, 'raster');
       showGPResult('NDVI complete — colorized bare/water (brown) to healthy vegetation (green).', false, title);
+
+    } else if(tool === 'elevprofile'){
+      const gr = getLayerGeoraster(layerA);
+      if(!gr){ showGPResult(layerA.name + ' is not a readable GeoTIFF raster.', true, title); return; }
+      const lineFeats = getFeaturesArray(layerB).filter(f => f.geometry && f.geometry.type === 'LineString');
+      if(lineFeats.length === 0){ showGPResult(layerB.name + ' has no single-part line features (MultiLineString isn\'t supported — draw with Create Feature → Line).', true, title); return; }
+      const bounds = layerA.leafletLayer.getBounds();
+      const profile = computeElevationProfile(gr, bounds, lineFeats[0]);
+      if(!profile){ showGPResult('That line has no length to sample.', true, title); return; }
+      if(!profile.samples.some(s => s.elev != null)){ showGPResult('No valid elevation values along this line — it may fall outside the raster\'s extent.', true, title); return; }
+      showElevationProfileResult(profile, layerA.name, layerB.name, title);
 
     } else if(tool === 'routeanalysis'){
       const useSelA = document.getElementById('gp-use-a')?.checked;
@@ -3824,6 +4377,182 @@ document.getElementById('project-file-input').addEventListener('change', e => {
   e.target.value = '';
 });
 
+/* ── Save As: ArcGIS Pro (Shapefile) / QGIS (GeoPackage) ─────────────────
+   Reuses the GDAL-in-WebAssembly + zip/vsizip technique already used by
+   the "GDB to GPKG" tool (see convertGdbFolderToGpkg below). Each vector
+   layer's GeoJSON is converted to an ESRI Shapefile via ogr2ogr; bundling
+   every layer's .shp/.shx/.dbf/.prj into one zip gives a shapefile
+   "folder" that ArcGIS Pro opens directly. For QGIS, that same zip is
+   reopened through GDAL's vsizip filesystem — which sees a folder of
+   .shp files as one multi-layer dataset — and converted in a single
+   ogr2ogr pass into one .gpkg, the format QGIS treats as its native
+   multi-layer container. */
+
+function appToast(msg, isError, holdMs){
+  let el = document.getElementById('save-export-toast');
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'save-export-toast';
+    el.style.cssText = 'position:fixed;left:50%;bottom:38px;transform:translateX(-50%);z-index:5000;'
+      + 'background:var(--bg-panel);border:1px solid var(--border);border-radius:6px;padding:9px 16px;'
+      + 'font-size:12.5px;box-shadow:0 4px 16px rgba(0,0,0,0.5);max-width:440px;text-align:center;cursor:pointer;';
+    el.title = 'Click to dismiss';
+    el.addEventListener('click', () => el.remove());
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.style.color = isError ? '#f87171' : 'var(--text)';
+  el.style.borderColor = isError ? '#f87171' : 'var(--border)';
+  clearTimeout(el._hideTimer);
+  if(!isError) el._hideTimer = setTimeout(() => el.remove(), holdMs || 4000);
+  return el;
+}
+
+function getExportableVectorLayers(){
+  return Object.values(layers)
+    .filter(lyr => lyr.type !== 'raster' && lyr.leafletLayer && typeof lyr.leafletLayer.toGeoJSON === 'function')
+    .map(lyr => ({ name: lyr.name, geojson: lyr.leafletLayer.toGeoJSON() }))
+    .filter(l => l.geojson && Array.isArray(l.geojson.features) && l.geojson.features.length > 0);
+}
+
+function sanitizeOgrLayerName(name, used){
+  const base = (name || 'layer').replace(/[^a-zA-Z0-9_]+/g, '_').replace(/^_+|_+$/g, '') || 'layer';
+  let out = base, n = 2;
+  while(used.has(out.toLowerCase())) out = `${base}_${n++}`;
+  used.add(out.toLowerCase());
+  return out;
+}
+
+// Converts every exportable vector layer into its own ESRI Shapefile and
+// bundles them together in one JSZip instance (not yet downloaded).
+async function buildShapefileZip(exportLayers){
+  const Gdal  = await loadGdalJs(msg => appToast(msg));
+  const JSZip = await loadJSZip();
+  const zip   = new JSZip();
+  const used  = new Set();
+  const skipped = [];
+
+  for(const l of exportLayers){
+    const safeName = sanitizeOgrLayerName(l.name, used);
+    appToast(`Converting "${l.name}"…`);
+    try {
+      const file = new File([JSON.stringify(l.geojson)], `${safeName}.geojson`, { type: 'application/geo+json' });
+      const { datasets, errors } = await Gdal.open(file);
+      if(!datasets || !datasets.length){
+        throw new Error((errors && errors.map(e => e.message).filter(Boolean).join('; ')) || 'GDAL could not read this layer.');
+      }
+      const ds = datasets[0];
+      const output = await Gdal.ogr2ogr(ds, ['-f', 'ESRI Shapefile', '-nln', safeName], safeName);
+      for(const f of output.all){
+        zip.file(f.local.split('/').pop(), await Gdal.getFileBytes(f));
+      }
+      try { await Gdal.close(ds); } catch(_){}
+    } catch(err){
+      console.warn(`Skipped layer "${l.name}" during export:`, err);
+      skipped.push(l.name);
+    }
+  }
+
+  if(skipped.length === exportLayers.length){
+    throw new Error('None of the layers could be converted (shapefiles cannot mix geometry types within a layer).');
+  }
+  return { zip, skipped };
+}
+
+async function saveProjectAsShapefile(){
+  const exportLayers = getExportableVectorLayers();
+  if(!exportLayers.length){ appToast('No vector layers with features to export.', true); return; }
+  try {
+    appToast('Preparing shapefiles…');
+    const { zip, skipped } = await buildShapefileZip(exportLayers);
+    appToast('Packaging…');
+    const blob = await zip.generateAsync({ type: 'blob' });
+    downloadBlob(blob, 'maplite-export-shapefiles.zip');
+    appToast(skipped.length
+      ? `Exported with ${skipped.length} layer(s) skipped: ${skipped.join(', ')}`
+      : 'Shapefile export complete.');
+  } catch(err){
+    appToast('Shapefile export failed: ' + err.message, true);
+  }
+}
+
+async function saveProjectAsGeoPackage(){
+  const exportLayers = getExportableVectorLayers();
+  if(!exportLayers.length){ appToast('No vector layers with features to export.', true); return; }
+  try {
+    appToast('Preparing layers…');
+    const { zip, skipped } = await buildShapefileZip(exportLayers);
+    appToast('Packaging…');
+    const zipBlob = await zip.generateAsync({ type: 'blob' });
+    const zipFile = new File([zipBlob], 'layers.zip');
+
+    const Gdal = await loadGdalJs(msg => appToast(msg));
+    appToast('Converting to GeoPackage…');
+    const { datasets, errors } = await Gdal.open(zipFile, [], ['vsizip']);
+    if(!datasets || !datasets.length){
+      throw new Error((errors && errors.map(e => e.message).filter(Boolean).join('; ')) || 'GDAL could not build a GeoPackage from these layers.');
+    }
+    const output = await Gdal.ogr2ogr(datasets[0], ['-f', 'GPKG'], 'maplite-export');
+    const bytes = await Gdal.getFileBytes(output);
+    try { await Gdal.close(datasets[0]); } catch(_){}
+
+    downloadBlob(new Blob([bytes], { type: 'application/geopackage+sqlite3' }), 'maplite-export.gpkg');
+    appToast(skipped.length
+      ? `Exported with ${skipped.length} layer(s) skipped: ${skipped.join(', ')}`
+      : 'GeoPackage export complete.');
+  } catch(err){
+    appToast('GeoPackage export failed: ' + err.message, true);
+  }
+}
+
+/* ── Export a selected area as a GeoTIFF ──────────────────────────────
+   Captures whatever's currently rendered on screen (basemap + visible
+   layers) for the drawn rectangle — the same html2canvas call already
+   proven safe against these basemap tile servers' CORS headers by the
+   Print/Layout PNG export — crops it to the rectangle's screen pixels,
+   then hands it to GDAL's gdal_translate (same WASM build already used
+   for CAD import and Shapefile/GeoPackage export) to stamp on real
+   georeferencing via -a_ullr and write out an actual .tif. This is a
+   snapshot of what's on screen at the current zoom, not a native-
+   resolution tile mosaic. */
+async function exportSelectedAreaAsGeoTiff(bounds){
+  try {
+    appToast('Capturing selected area…');
+    const nw = map.latLngToContainerPoint(L.latLng(bounds.getNorth(), bounds.getWest()));
+    const se = map.latLngToContainerPoint(L.latLng(bounds.getSouth(), bounds.getEast()));
+    const cropX = Math.max(0, Math.min(nw.x, se.x));
+    const cropY = Math.max(0, Math.min(nw.y, se.y));
+    const cropW = Math.round(Math.abs(se.x - nw.x));
+    const cropH = Math.round(Math.abs(se.y - nw.y));
+    if(cropW < 2 || cropH < 2){ appToast('That selection is too small — draw a larger rectangle.', true); return; }
+
+    const fullCanvas = await html2canvas(document.getElementById('map'), { useCORS: true, allowTaint: true, scale: 1, logging: false });
+    const cropCanvas = document.createElement('canvas');
+    cropCanvas.width = cropW; cropCanvas.height = cropH;
+    cropCanvas.getContext('2d').drawImage(fullCanvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+
+    appToast('Writing GeoTIFF…');
+    const pngBlob = await new Promise(resolve => cropCanvas.toBlob(resolve, 'image/png'));
+    const pngFile = new File([pngBlob], 'export.png', { type: 'image/png' });
+
+    const Gdal = await loadGdalJs(msg => appToast(msg));
+    const { datasets, errors } = await Gdal.open(pngFile);
+    if(!datasets || !datasets.length){
+      throw new Error((errors && errors.map(e => e.message).filter(Boolean).join('; ')) || 'GDAL could not read the captured image.');
+    }
+    const ds = datasets[0];
+    const ullr = [bounds.getWest(), bounds.getNorth(), bounds.getEast(), bounds.getSouth()].map(String);
+    const output = await Gdal.gdal_translate(ds, ['-a_srs', 'EPSG:4326', '-a_ullr', ...ullr, '-of', 'GTiff'], 'maplite-export');
+    const bytes = await Gdal.getFileBytes(output);
+    try { await Gdal.close(ds); } catch(_){}
+
+    downloadBlob(new Blob([bytes], { type: 'image/tiff' }), 'maplite-export.tif');
+    appToast('GeoTIFF downloaded — maplite-export.tif', false, 6000);
+  } catch(err){
+    appToast('GeoTIFF export failed: ' + (err && err.message ? err.message : err), true);
+  }
+}
+
 document.getElementById('qat-save')?.addEventListener('click', saveProject);
 document.getElementById('qat-open')?.addEventListener('click', () => document.getElementById('project-file-input').click());
 
@@ -3945,8 +4674,16 @@ async function serializeLayerForAutosave(id, lyr){
     }
     if(lyr.leafletLayer instanceof L.ImageOverlay){
       const bounds = lyr.leafletLayer.getBounds();
-      let imageBlob = null;
-      try{ imageBlob = dataUrlToBlob(lyr.leafletLayer._url); }catch(e){}
+      // Prefer the blob cached at restore time: once a layer has been through
+      // restoreAutosavedLayer(), its live URL is a blob: object URL (from
+      // URL.createObjectURL), which dataUrlToBlob() can't parse (it expects
+      // a data: URL) — that used to fail silently and drop the layer from
+      // every autosave after the first restore. recolorRasterLayer() clears
+      // this cache whenever it sets a genuinely new data: URL.
+      let imageBlob = lyr._sourceImageBlob || null;
+      if(!imageBlob){
+        try{ imageBlob = dataUrlToBlob(lyr.leafletLayer._url); }catch(e){ console.warn('[autosave] could not serialize raster layer', lyr.name, e); }
+      }
       if(!imageBlob) return null;
       return {
         ...base, rasterKind: 'imageoverlay', imageBlob,
@@ -3986,6 +4723,7 @@ async function restoreAutosavedLayer(rec){
     const overlay = L.imageOverlay(url, rec.bounds, { opacity: rec.opacity ?? 1 });
     id = addLayerToRegistry(rec.name, overlay, null, 'raster', rec.id);
     if(rec.rasterRender) layers[id].rasterRender = rec.rasterRender;
+    layers[id]._sourceImageBlob = rec.imageBlob; // cache so re-persisting doesn't need to parse the blob: URL above
   } else if(rec.geojson && rec.geojson.features && rec.geojson.features.length > 0){
     id = loadGeoJSON(rec.name, rec.geojson, rec.color, rec.id);
   }
