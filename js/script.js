@@ -5702,27 +5702,29 @@ async function loadJSZip(){
   return _jsZip;
 }
 
-// GDAL compiled to WebAssembly — used only for real ESRI File Geodatabase (.gdb)
-// import, since browsers have no native way to read that binary format and no
-// other library here can parse it. Large (~tens of MB), so only fetched the
-// first time the user actually tries to import a .gdb folder.
+// GDAL compiled to WebAssembly — powers GDB→GPKG, CAD import (.dxf/.dwg),
+// Shapefile/GeoPackage export, raster Georeference, and Export GeoTIFF.
+// Self-hosted under js/gdal3/ (gdal3.js + gdal3WebAssembly.wasm/.data,
+// ~40MB total) rather than fetched from a CDN, so none of the above break
+// when jsDelivr is unreachable — offline, a corporate firewall, etc. Still
+// lazy-loaded: nothing here is fetched until a GDAL-backed feature actually
+// runs.
 let _gdalJs = null;
-const GDAL_JS_VERSION = '2.8.1';
 async function loadGdalJs(onProgress){
   if(_gdalJs) return _gdalJs;
   if(!window.initGdalJs){
-    if(onProgress) onProgress('Downloading GDAL (WebAssembly)… this is a one-time ~30MB fetch.');
+    if(onProgress) onProgress('Loading GDAL (WebAssembly)… this is a one-time ~40MB local fetch.');
     await new Promise((resolve, reject) => {
       const s = document.createElement('script');
-      s.src = `https://cdn.jsdelivr.net/npm/gdal3.js@${GDAL_JS_VERSION}/dist/package/gdal3.js`;
+      s.src = 'js/gdal3/gdal3.js';
       s.onload = resolve;
-      s.onerror = () => reject(new Error('Failed to load gdal3.js from CDN'));
+      s.onerror = () => reject(new Error('Failed to load js/gdal3/gdal3.js'));
       document.head.appendChild(s);
     });
   }
   if(onProgress) onProgress('Initializing GDAL…');
   _gdalJs = await window.initGdalJs({
-    path: `https://cdn.jsdelivr.net/npm/gdal3.js@${GDAL_JS_VERSION}/dist/package`,
+    path: 'js/gdal3',
     useWorker: false
   });
   return _gdalJs;
